@@ -47,6 +47,12 @@ export const config = {
     password: process.env.MQTT_PASSWORD || '',
     clientId: process.env.MQTT_CLIENT_ID || `ivy-gateway-${Date.now()}`,
     topicPrefix: process.env.MQTT_TOPIC_PREFIX || 'metpow/4g',
+    // Authentication config
+    auth: {
+      enabled: process.env.MQTT_AUTH_ENABLED === 'true', // false by default for dev
+      allowAnonymous: process.env.MQTT_ALLOW_ANONYMOUS === 'true', // false by default
+      users: process.env.MQTT_USERS || '', // Format: "user1:pass1,user2:pass2"
+    },
   },
 
   // Database

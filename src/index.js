@@ -7,12 +7,16 @@ import config, { validateConfig } from './config/index.js';
 import logger from './utils/logger.js';
 import { createTCPServer, SERVER_EVENTS } from './tcp/server.js';
 import { createMQTTBroker } from './mqtt/broker.js';
+import { createAuthManager } from './mqtt/auth.js';
 
 /** @type {import('./tcp/server.js').TCPServer|null} */
 let tcpServer = null;
 
 /** @type {import('./mqtt/broker.js').MQTTBroker|null} */
 let mqttBroker = null;
+
+/** @type {import('./mqtt/auth.js').AuthManager|null} */
+let authManager = null;
 
 /**
  * Application startup
@@ -37,8 +41,26 @@ const main = async () => {
     // Start the server
     await tcpServer.start();
 
+    // Setup MQTT Authentication if enabled
+    if (config.mqtt.auth.enabled) {
+      authManager = createAuthManager({
+        allowAnonymous: config.mqtt.auth.allowAnonymous,
+        users: config.mqtt.auth.users,
+      });
+      logger.info('MQTT Auth enabled', {
+        allowAnonymous: config.mqtt.auth.allowAnonymous,
+        userCount: authManager.getAllUsers().length,
+      });
+    }
+
     // Start MQTT Broker
-    mqttBroker = createMQTTBroker();
+    mqttBroker = createMQTTBroker({
+      ...(authManager && {
+        authenticate: authManager.authenticate.bind(authManager),
+        authorizePublish: authManager.authorizePublish.bind(authManager),
+        authorizeSubscribe: authManager.authorizeSubscribe.bind(authManager),
+      }),
+    });
     await mqttBroker.start();
 
     logger.info('IVY 4G Gateway started successfully', {

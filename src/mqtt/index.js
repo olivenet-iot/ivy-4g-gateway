@@ -13,3 +13,9 @@ export {
   createMQTTBroker,
   resetInstance as resetBrokerInstance,
 } from './broker.js';
+
+export {
+  AuthManager,
+  createAuthManager,
+  DEFAULT_ACL_RULES,
+} from './auth.js';
