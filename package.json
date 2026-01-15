@@ -1,0 +1,44 @@
+{
+  "name": "ivy-4g-gateway",
+  "version": "0.1.0",
+  "description": "TCP/MQTT Gateway for IVY 4G Energy Meters (DLT645-2007 Protocol)",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "test": "vitest",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/ tests/",
+    "lint:fix": "eslint src/ tests/ --fix",
+    "format": "prettier --write \"src/**/*.js\" \"tests/**/*.js\""
+  },
+  "keywords": [
+    "iot",
+    "energy-meter",
+    "dlt645",
+    "tcp",
+    "mqtt",
+    "gateway",
+    "4g"
+  ],
+  "author": "Olivenet Ltd",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "mqtt": "^5.10.0",
+    "winston": "^3.14.0",
+    "ioredis": "^5.4.0",
+    "pg": "^8.12.0",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "vitest": "^2.0.0",
+    "@vitest/coverage-v8": "^2.0.0",
+    "eslint": "^9.9.0",
+    "prettier": "^3.3.0"
+  }
+}
