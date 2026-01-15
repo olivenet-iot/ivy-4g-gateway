@@ -6,9 +6,13 @@
 import config, { validateConfig } from './config/index.js';
 import logger from './utils/logger.js';
 import { createTCPServer, SERVER_EVENTS } from './tcp/server.js';
+import { createMQTTBroker } from './mqtt/broker.js';
 
 /** @type {import('./tcp/server.js').TCPServer|null} */
 let tcpServer = null;
+
+/** @type {import('./mqtt/broker.js').MQTTBroker|null} */
+let mqttBroker = null;
 
 /**
  * Application startup
@@ -33,8 +37,13 @@ const main = async () => {
     // Start the server
     await tcpServer.start();
 
+    // Start MQTT Broker
+    mqttBroker = createMQTTBroker();
+    await mqttBroker.start();
+
     logger.info('IVY 4G Gateway started successfully', {
       tcpPort: config.tcp.port,
+      mqttPort: config.mqtt.port,
     });
 
     // Setup shutdown handlers
@@ -96,8 +105,12 @@ const shutdown = async () => {
       logger.info('TCP Server stopped');
     }
 
-    // TODO: Close other connections (Phase 2-3)
-    // - Disconnect MQTT
+    if (mqttBroker) {
+      await mqttBroker.stop();
+      logger.info('MQTT Broker stopped');
+    }
+
+    // TODO: Close other connections (Phase 3)
     // - Close database pool
     // - Disconnect Redis
 

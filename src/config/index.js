@@ -38,6 +38,10 @@ export const config = {
 
   // MQTT
   mqtt: {
+    // Embedded broker config
+    port: parseIntDefault(process.env.MQTT_PORT, 1883),
+    host: process.env.MQTT_HOST || '0.0.0.0',
+    // Client config (for connecting to external brokers)
     brokerUrl: process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883',
     username: process.env.MQTT_USERNAME || '',
     password: process.env.MQTT_PASSWORD || '',
