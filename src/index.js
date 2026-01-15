@@ -8,6 +8,7 @@ import logger from './utils/logger.js';
 import { createTCPServer, SERVER_EVENTS } from './tcp/server.js';
 import { createMQTTBroker } from './mqtt/broker.js';
 import { createAuthManager } from './mqtt/auth.js';
+import { createTelemetryPublisher } from './mqtt/publisher.js';
 
 /** @type {import('./tcp/server.js').TCPServer|null} */
 let tcpServer = null;
@@ -17,6 +18,9 @@ let mqttBroker = null;
 
 /** @type {import('./mqtt/auth.js').AuthManager|null} */
 let authManager = null;
+
+/** @type {import('./mqtt/publisher.js').TelemetryPublisher|null} */
+let telemetryPublisher = null;
 
 /**
  * Application startup
@@ -63,6 +67,16 @@ const main = async () => {
     });
     await mqttBroker.start();
 
+    // Create and start Telemetry Publisher
+    telemetryPublisher = createTelemetryPublisher({
+      broker: mqttBroker,
+    });
+    telemetryPublisher.start({
+      version: '0.1.0',
+      name: 'IVY 4G Gateway',
+    });
+    logger.info('Telemetry Publisher started');
+
     logger.info('IVY 4G Gateway started successfully', {
       tcpPort: config.tcp.port,
       mqttPort: config.mqtt.port,
@@ -82,15 +96,25 @@ const main = async () => {
  * Setup TCP server event handlers
  */
 const setupEventHandlers = () => {
-  tcpServer.on(SERVER_EVENTS.METER_CONNECTED, ({ meterId, remoteAddress }) => {
+  tcpServer.on(SERVER_EVENTS.METER_CONNECTED, async ({ meterId, remoteAddress }) => {
     logger.info('Meter connected', { meterId, remoteAddress });
+
+    // Publish meter online status
+    if (telemetryPublisher) {
+      await telemetryPublisher.publishMeterStatus(meterId, true, { ip: remoteAddress });
+    }
   });
 
-  tcpServer.on(SERVER_EVENTS.METER_DISCONNECTED, ({ meterId, stats }) => {
+  tcpServer.on(SERVER_EVENTS.METER_DISCONNECTED, async ({ meterId, stats }) => {
     logger.info('Meter disconnected', { meterId, stats });
+
+    // Publish meter offline status
+    if (telemetryPublisher) {
+      await telemetryPublisher.publishMeterStatus(meterId, false);
+    }
   });
 
-  tcpServer.on(SERVER_EVENTS.TELEMETRY_RECEIVED, (data) => {
+  tcpServer.on(SERVER_EVENTS.TELEMETRY_RECEIVED, async (data) => {
     logger.debug('Telemetry received', {
       meterId: data.meterId,
       register: data.register?.name || data.dataIdFormatted,
@@ -98,8 +122,10 @@ const setupEventHandlers = () => {
       unit: data.unit,
     });
 
-    // TODO: Publish to MQTT (Phase 2)
-    // mqttPublisher.publishTelemetry(data);
+    // Publish to MQTT
+    if (telemetryPublisher) {
+      await telemetryPublisher.publishTelemetry(data.meterId, data);
+    }
   });
 
   tcpServer.on(SERVER_EVENTS.ERROR_RESPONSE, (data) => {
@@ -127,6 +153,11 @@ const shutdown = async () => {
       logger.info('TCP Server stopped');
     }
 
+    if (telemetryPublisher) {
+      await telemetryPublisher.stop();
+      logger.info('Telemetry Publisher stopped');
+    }
+
     if (mqttBroker) {
       await mqttBroker.stop();
       logger.info('MQTT Broker stopped');
@@ -138,7 +169,6 @@ const shutdown = async () => {
 
     logger.info('Shutdown complete');
     process.exit(0);
-
   } catch (error) {
     logger.error('Error during shutdown', { error: error.message });
     process.exit(1);

@@ -19,3 +19,11 @@ export {
   createAuthManager,
   DEFAULT_ACL_RULES,
 } from './auth.js';
+
+export {
+  TelemetryPublisher,
+  TOPIC_PREFIX,
+  Topics,
+  PUBLISHER_EVENTS,
+  createTelemetryPublisher,
+} from './publisher.js';
