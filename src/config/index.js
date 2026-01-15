@@ -80,8 +80,12 @@ export const config = {
 
   // Polling
   polling: {
-    intervalMs: parseIntDefault(process.env.POLLING_INTERVAL_MS, 60000),
-    batchSize: parseIntDefault(process.env.POLLING_BATCH_SIZE, 10),
+    enabled: process.env.POLLING_ENABLED !== 'false', // true by default
+    interval: parseIntDefault(process.env.POLLING_INTERVAL, 60000),
+    registerGroup: process.env.POLLING_REGISTER_GROUP || 'energy',
+    timeout: parseIntDefault(process.env.POLLING_TIMEOUT, 10000),
+    retries: parseIntDefault(process.env.POLLING_RETRIES, 2),
+    staggerDelay: parseIntDefault(process.env.POLLING_STAGGER_DELAY, 100),
   },
 };
 

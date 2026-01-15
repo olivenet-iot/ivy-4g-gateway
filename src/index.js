@@ -9,6 +9,7 @@ import { createTCPServer, SERVER_EVENTS } from './tcp/server.js';
 import { createMQTTBroker } from './mqtt/broker.js';
 import { createAuthManager } from './mqtt/auth.js';
 import { createTelemetryPublisher } from './mqtt/publisher.js';
+import { createPollingManager } from './services/polling-manager.js';
 
 /** @type {import('./tcp/server.js').TCPServer|null} */
 let tcpServer = null;
@@ -21,6 +22,9 @@ let authManager = null;
 
 /** @type {import('./mqtt/publisher.js').TelemetryPublisher|null} */
 let telemetryPublisher = null;
+
+/** @type {import('./services/polling-manager.js').PollingManager|null} */
+let pollingManager = null;
 
 /**
  * Application startup
@@ -76,6 +80,15 @@ const main = async () => {
       name: 'IVY 4G Gateway',
     });
     logger.info('Telemetry Publisher started');
+
+    // Create and start Polling Manager
+    pollingManager = createPollingManager({ tcpServer });
+    pollingManager.start();
+    logger.info('Polling Manager started', {
+      interval: config.polling.interval,
+      registerGroup: config.polling.registerGroup,
+      enabled: config.polling.enabled,
+    });
 
     logger.info('IVY 4G Gateway started successfully', {
       tcpPort: config.tcp.port,
@@ -148,6 +161,11 @@ const shutdown = async () => {
   logger.info('Shutting down...');
 
   try {
+    if (pollingManager) {
+      pollingManager.stop();
+      logger.info('Polling Manager stopped');
+    }
+
     if (tcpServer) {
       await tcpServer.stop();
       logger.info('TCP Server stopped');
