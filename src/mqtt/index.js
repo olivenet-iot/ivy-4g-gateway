@@ -27,3 +27,11 @@ export {
   PUBLISHER_EVENTS,
   createTelemetryPublisher,
 } from './publisher.js';
+
+export {
+  CommandHandler,
+  COMMAND_EVENTS,
+  COMMAND_METHODS,
+  COMMAND_STATUS,
+  createCommandHandler,
+} from './command-handler.js';
