@@ -11,6 +11,7 @@ import { createAuthManager } from './mqtt/auth.js';
 import { createTelemetryPublisher } from './mqtt/publisher.js';
 import { createCommandHandler } from './mqtt/command-handler.js';
 import { createPollingManager } from './services/polling-manager.js';
+import { createStatusManager } from './services/status-manager.js';
 
 /** @type {import('./tcp/server.js').TCPServer|null} */
 let tcpServer = null;
@@ -29,6 +30,9 @@ let commandHandler = null;
 
 /** @type {import('./services/polling-manager.js').PollingManager|null} */
 let pollingManager = null;
+
+/** @type {import('./services/status-manager.js').StatusManager|null} */
+let statusManager = null;
 
 /**
  * Application startup
@@ -103,6 +107,14 @@ const main = async () => {
       enabled: config.polling.enabled,
     });
 
+    // Create and start Status Manager
+    statusManager = createStatusManager({
+      publisher: telemetryPublisher,
+      tcpServer,
+    });
+    statusManager.start();
+    logger.info('Status Manager started');
+
     logger.info('IVY 4G Gateway started successfully', {
       tcpPort: config.tcp.port,
       mqttPort: config.mqtt.port,
@@ -174,6 +186,11 @@ const shutdown = async () => {
   logger.info('Shutting down...');
 
   try {
+    if (statusManager) {
+      statusManager.stop();
+      logger.info('Status Manager stopped');
+    }
+
     if (commandHandler) {
       commandHandler.stop();
       logger.info('Command Handler stopped');
