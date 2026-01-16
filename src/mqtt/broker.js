@@ -18,7 +18,7 @@
 import Aedes from 'aedes';
 import { createServer } from 'net';
 import { createServer as createHttpServer } from 'http';
-import { WebSocketServer } from 'ws';
+import { WebSocketServer, createWebSocketStream } from 'ws';
 import { EventEmitter } from 'events';
 import { createChildLogger } from '../utils/logger.js';
 import config from '../config/index.js';
@@ -324,7 +324,7 @@ export class MQTTBroker extends EventEmitter {
 
       // Handle WebSocket connections
       this.wss.on('connection', (ws) => {
-        const stream = WebSocketServer.createWebSocketStream(ws, { duplex: true });
+        const stream = createWebSocketStream(ws, { duplex: true });
         this.aedes.handle(stream);
       });
 
