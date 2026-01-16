@@ -35,9 +35,11 @@ const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 describe('MQTT Broker', () => {
   let broker;
   let testPort;
+  let testWsPort;
 
   beforeEach(async () => {
     testPort = await getAvailablePort();
+    testWsPort = await getAvailablePort();
   });
 
   afterEach(async () => {
@@ -62,7 +64,7 @@ describe('MQTT Broker', () => {
 
   describe('constructor', () => {
     it('should create broker with default options', () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       expect(broker).toBeInstanceOf(MQTTBroker);
       expect(broker.isRunning).toBe(false);
     });
@@ -70,6 +72,7 @@ describe('MQTT Broker', () => {
     it('should accept custom options', () => {
       broker = createMQTTBroker({
         port: testPort,
+        wsPort: testWsPort,
         host: '127.0.0.1',
       });
       expect(broker.options.port).toBe(testPort);
@@ -79,7 +82,7 @@ describe('MQTT Broker', () => {
 
   describe('start / stop', () => {
     it('should start broker on specified port', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
 
       expect(broker.isRunning).toBe(true);
@@ -87,7 +90,7 @@ describe('MQTT Broker', () => {
     });
 
     it('should stop broker gracefully', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
       await broker.stop();
 
@@ -95,7 +98,7 @@ describe('MQTT Broker', () => {
     });
 
     it('should not start twice', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
       await broker.start(); // Should not error
 
@@ -103,7 +106,7 @@ describe('MQTT Broker', () => {
     });
 
     it('should emit BROKER_STARTED event', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
 
       let startedEvent = null;
       broker.on(BROKER_EVENTS.BROKER_STARTED, (data) => {
@@ -119,7 +122,7 @@ describe('MQTT Broker', () => {
 
   describe('client connections', () => {
     it('should accept MQTT client connections', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
 
       const client = mqtt.connect(`mqtt://localhost:${testPort}`, {
@@ -140,7 +143,7 @@ describe('MQTT Broker', () => {
     });
 
     it('should track multiple clients', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
 
       const client1 = mqtt.connect(`mqtt://localhost:${testPort}`, {
@@ -164,7 +167,7 @@ describe('MQTT Broker', () => {
     });
 
     it('should handle client disconnect', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
 
       const client = mqtt.connect(`mqtt://localhost:${testPort}`, {
@@ -183,7 +186,7 @@ describe('MQTT Broker', () => {
     });
 
     it('should emit CLIENT_CONNECTED event', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
 
       let connectedEvent = null;
@@ -205,7 +208,7 @@ describe('MQTT Broker', () => {
     });
 
     it('should emit CLIENT_DISCONNECTED event', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
 
       let disconnectedEvent = null;
@@ -230,7 +233,7 @@ describe('MQTT Broker', () => {
 
   describe('publish', () => {
     it('should publish message to topic', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
 
       const client = mqtt.connect(`mqtt://localhost:${testPort}`);
@@ -257,7 +260,7 @@ describe('MQTT Broker', () => {
     });
 
     it('should publish JSON objects', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
 
       const client = mqtt.connect(`mqtt://localhost:${testPort}`);
@@ -283,7 +286,7 @@ describe('MQTT Broker', () => {
     });
 
     it('should publish with QoS and retain options', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
 
       // Should not throw
@@ -291,7 +294,7 @@ describe('MQTT Broker', () => {
     });
 
     it('should throw when broker not running', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
 
       await expect(broker.publish('test', 'data')).rejects.toThrow('Broker not running');
     });
@@ -299,7 +302,7 @@ describe('MQTT Broker', () => {
 
   describe('subscriptions', () => {
     it('should track client subscriptions', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
 
       const client = mqtt.connect(`mqtt://localhost:${testPort}`, {
@@ -322,7 +325,7 @@ describe('MQTT Broker', () => {
     });
 
     it('should emit MESSAGE_SUBSCRIBED event', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
 
       let subscribedEvent = null;
@@ -358,7 +361,7 @@ describe('MQTT Broker', () => {
         }
       };
 
-      broker = createMQTTBroker({ port: testPort, authenticate });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort, authenticate });
       await broker.start();
 
       // Valid credentials
@@ -392,7 +395,7 @@ describe('MQTT Broker', () => {
 
   describe('getStats', () => {
     it('should return broker statistics', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
 
       const stats = broker.getStats();
@@ -404,7 +407,7 @@ describe('MQTT Broker', () => {
     });
 
     it('should track client count', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
 
       const client = mqtt.connect(`mqtt://localhost:${testPort}`);
@@ -419,7 +422,7 @@ describe('MQTT Broker', () => {
     });
 
     it('should update connected count on disconnect', async () => {
-      broker = createMQTTBroker({ port: testPort });
+      broker = createMQTTBroker({ port: testPort, wsPort: testWsPort });
       await broker.start();
 
       const client = mqtt.connect(`mqtt://localhost:${testPort}`);

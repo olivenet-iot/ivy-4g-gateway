@@ -76,6 +76,7 @@ const createTestClient = (port, options = {}) => {
 
 describe('MQTT Flow Integration Tests', () => {
   let mqttPort;
+  let mqttWsPort;
   let tcpPort;
   let broker;
   let authManager;
@@ -87,6 +88,7 @@ describe('MQTT Flow Integration Tests', () => {
   beforeAll(async () => {
     // Get available ports
     mqttPort = await getAvailablePort();
+    mqttWsPort = await getAvailablePort();
     tcpPort = await getAvailablePort();
 
     // Create auth manager with test users
@@ -132,6 +134,7 @@ describe('MQTT Flow Integration Tests', () => {
     // Create and start broker with auth
     broker = createMQTTBroker({
       port: mqttPort,
+      wsPort: mqttWsPort,
       authenticate: authManager.authenticate.bind(authManager),
       authorizePublish: authManager.authorizePublish.bind(authManager),
       authorizeSubscribe: authManager.authorizeSubscribe.bind(authManager),
@@ -549,6 +552,7 @@ describe('MQTT Flow Integration Tests', () => {
 
 describe('Full System Integration', () => {
   let mqttPort;
+  let mqttWsPort;
   let tcpPort;
   let broker;
   let authManager;
@@ -562,6 +566,7 @@ describe('Full System Integration', () => {
   beforeAll(async () => {
     await resetInstance();
     mqttPort = await getAvailablePort();
+    mqttWsPort = await getAvailablePort();
     tcpPort = await getAvailablePort();
 
     authManager = createAuthManager({
@@ -589,6 +594,7 @@ describe('Full System Integration', () => {
 
     broker = createMQTTBroker({
       port: mqttPort,
+      wsPort: mqttWsPort,
       authenticate: authManager.authenticate.bind(authManager),
       authorizePublish: authManager.authorizePublish.bind(authManager),
       authorizeSubscribe: authManager.authorizeSubscribe.bind(authManager),

@@ -8,6 +8,7 @@
  * Features:
  * - MQTT 3.1.1 support
  * - TCP transport (port 1883)
+ * - WebSocket transport (port 9001)
  * - Basic authentication
  * - Connection tracking
  *
@@ -16,6 +17,8 @@
 
 import Aedes from 'aedes';
 import { createServer } from 'net';
+import { createServer as createHttpServer } from 'http';
+import { WebSocketServer } from 'ws';
 import { EventEmitter } from 'events';
 import { createChildLogger } from '../utils/logger.js';
 import config from '../config/index.js';
@@ -42,6 +45,7 @@ export class MQTTBroker extends EventEmitter {
   /**
    * @param {Object} options - Broker options
    * @param {number} [options.port=1883] - MQTT TCP port
+   * @param {number} [options.wsPort=9001] - MQTT WebSocket port
    * @param {string} [options.host='0.0.0.0'] - Bind host
    * @param {Function} [options.authenticate] - Auth function
    * @param {Function} [options.authorizePublish] - Publish ACL
@@ -52,6 +56,7 @@ export class MQTTBroker extends EventEmitter {
 
     this.options = {
       port: options.port || config.mqtt?.port || 1883,
+      wsPort: options.wsPort || config.mqtt?.wsPort || 9001,
       host: options.host || config.mqtt?.host || '0.0.0.0',
       authenticate: options.authenticate || null,
       authorizePublish: options.authorizePublish || null,
@@ -63,6 +68,12 @@ export class MQTTBroker extends EventEmitter {
 
     /** @type {import('net').Server|null} */
     this.server = null;
+
+    /** @type {import('http').Server|null} */
+    this.httpServer = null;
+
+    /** @type {WebSocketServer|null} */
+    this.wss = null;
 
     /** @type {boolean} */
     this.isRunning = false;
@@ -132,11 +143,18 @@ export class MQTTBroker extends EventEmitter {
           host: this.options.host,
           port: this.options.port,
         });
-        this.emit(BROKER_EVENTS.BROKER_STARTED, {
-          host: this.options.host,
-          port: this.options.port,
-        });
-        resolve();
+
+        // Setup WebSocket server for browser clients
+        this.setupWebSocketServer()
+          .then(() => {
+            this.emit(BROKER_EVENTS.BROKER_STARTED, {
+              host: this.options.host,
+              port: this.options.port,
+              wsPort: this.options.wsPort,
+            });
+            resolve();
+          })
+          .catch(reject);
       });
     });
   }
@@ -157,6 +175,18 @@ export class MQTTBroker extends EventEmitter {
       if (this.aedes) {
         this.aedes.close(() => {
           logger.debug('Aedes closed');
+        });
+      }
+
+      // Close WebSocket server
+      if (this.wss) {
+        this.wss.close();
+      }
+
+      // Close HTTP server for WebSocket
+      if (this.httpServer) {
+        this.httpServer.close(() => {
+          logger.debug('MQTT WebSocket server closed');
         });
       }
 
@@ -275,6 +305,41 @@ export class MQTTBroker extends EventEmitter {
       logger.debug('Client unsubscribed', {
         clientId: client.id,
         topics,
+      });
+    });
+  }
+
+  /**
+   * Setup WebSocket server for browser MQTT clients
+   * @private
+   * @returns {Promise<void>}
+   */
+  async setupWebSocketServer() {
+    return new Promise((resolve, reject) => {
+      // Create HTTP server for WebSocket upgrade
+      this.httpServer = createHttpServer();
+
+      // Create WebSocket server attached to HTTP server
+      this.wss = new WebSocketServer({ server: this.httpServer });
+
+      // Handle WebSocket connections
+      this.wss.on('connection', (ws) => {
+        const stream = WebSocketServer.createWebSocketStream(ws, { duplex: true });
+        this.aedes.handle(stream);
+      });
+
+      this.httpServer.on('error', (error) => {
+        logger.error('MQTT WebSocket server error', { error: error.message });
+        reject(error);
+      });
+
+      // Start WebSocket server
+      this.httpServer.listen(this.options.wsPort, this.options.host, () => {
+        logger.info('MQTT WebSocket server started', {
+          host: this.options.host,
+          port: this.options.wsPort,
+        });
+        resolve();
       });
     });
   }

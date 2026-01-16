@@ -40,6 +40,7 @@ export const config = {
   mqtt: {
     // Embedded broker config
     port: parseIntDefault(process.env.MQTT_PORT, 1883),
+    wsPort: parseIntDefault(process.env.MQTT_WS_PORT, 9001),
     host: process.env.MQTT_HOST || '0.0.0.0',
     // Client config (for connecting to external brokers)
     brokerUrl: process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883',
@@ -86,6 +87,12 @@ export const config = {
     timeout: parseIntDefault(process.env.POLLING_TIMEOUT, 10000),
     retries: parseIntDefault(process.env.POLLING_RETRIES, 2),
     staggerDelay: parseIntDefault(process.env.POLLING_STAGGER_DELAY, 100),
+  },
+
+  // HTTP Server (Dashboard)
+  http: {
+    enabled: process.env.HTTP_ENABLED !== 'false', // true by default
+    port: parseIntDefault(process.env.HTTP_PORT, 3000),
   },
 };
 

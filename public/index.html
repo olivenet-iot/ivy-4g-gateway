@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>IVY 4G Gateway Dashboard</title>
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    :root {
+      --bs-body-bg: #1a1d21;
+      --bs-body-color: #e9ecef;
+    }
+    body {
+      background-color: var(--bs-body-bg);
+      color: var(--bs-body-color);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+    }
+    .card {
+      background-color: #212529;
+      border: 1px solid #373b3e;
+    }
+    .card-header {
+      background-color: #2b3035;
+      border-bottom: 1px solid #373b3e;
+    }
+    .table {
+      color: var(--bs-body-color);
+    }
+    .form-control, .form-select {
+      background-color: #2b3035;
+      border-color: #373b3e;
+      color: var(--bs-body-color);
+    }
+    .form-control:focus, .form-select:focus {
+      background-color: #2b3035;
+      border-color: #0d6efd;
+      color: var(--bs-body-color);
+    }
+    .status-online { color: #198754; }
+    .status-offline { color: #dc3545; }
+    .log-entry {
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 0.85rem;
+      padding: 2px 0;
+      border-bottom: 1px solid #373b3e;
+    }
+    .log-container {
+      height: 300px;
+      overflow-y: auto;
+      background-color: #1a1d21;
+      padding: 10px;
+      border-radius: 4px;
+    }
+    .log-time { color: #6c757d; }
+    .log-topic { color: #0dcaf0; }
+    .log-meter { color: #ffc107; }
+    .log-value { color: #20c997; }
+    .json-display {
+      background-color: #1a1d21;
+      padding: 10px;
+      border-radius: 4px;
+      font-family: 'Consolas', 'Monaco', monospace;
+      font-size: 0.85rem;
+      white-space: pre-wrap;
+      word-break: break-all;
+      max-height: 150px;
+      overflow-y: auto;
+    }
+    .navbar {
+      background-color: #212529 !important;
+      border-bottom: 1px solid #373b3e;
+    }
+    .badge-pulse {
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar navbar-dark mb-4">
+    <div class="container-fluid">
+      <span class="navbar-brand mb-0 h1">
+        IVY 4G Gateway Dashboard
+      </span>
+      <div class="d-flex align-items-center gap-3">
+        <span id="connectionStatus" class="badge bg-danger">Disconnected</span>
+        <button id="connectBtn" class="btn btn-success btn-sm">Connect</button>
+      </div>
+    </div>
+  </nav>
+
+  <div class="container-fluid">
+    <!-- Connection Settings (collapsible) -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center"
+               data-bs-toggle="collapse" data-bs-target="#connectionSettings"
+               style="cursor: pointer;">
+            <span>Connection Settings</span>
+            <span class="text-muted small">Click to expand</span>
+          </div>
+          <div id="connectionSettings" class="collapse">
+            <div class="card-body">
+              <div class="row g-3">
+                <div class="col-md-3">
+                  <label class="form-label">Host</label>
+                  <input type="text" id="mqttHost" class="form-control" value="localhost">
+                </div>
+                <div class="col-md-2">
+                  <label class="form-label">WS Port</label>
+                  <input type="number" id="mqttPort" class="form-control" value="9001">
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label">Username</label>
+                  <input type="text" id="mqttUsername" class="form-control" value="admin">
+                </div>
+                <div class="col-md-3">
+                  <label class="form-label">Password</label>
+                  <input type="password" id="mqttPassword" class="form-control" value="admin123">
+                </div>
+                <div class="col-md-1 d-flex align-items-end">
+                  <button id="saveSettings" class="btn btn-outline-secondary btn-sm w-100">Save</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Gateway Status & Meters -->
+    <div class="row mb-4">
+      <!-- Gateway Status -->
+      <div class="col-md-4">
+        <div class="card h-100">
+          <div class="card-header">Gateway Status</div>
+          <div class="card-body">
+            <div id="gatewayStatus">
+              <p class="text-muted">Waiting for data...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Connected Meters -->
+      <div class="col-md-8">
+        <div class="card h-100">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Connected Meters</span>
+            <span id="meterCount" class="badge bg-secondary">0</span>
+          </div>
+          <div class="card-body p-0">
+            <div class="table-responsive">
+              <table class="table table-hover mb-0">
+                <thead>
+                  <tr>
+                    <th>Address</th>
+                    <th>Status</th>
+                    <th>Last Reading</th>
+                    <th>Last Seen</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="meterTable">
+                  <tr>
+                    <td colspan="5" class="text-center text-muted">No meters connected</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Command Panel & Response -->
+    <div class="row mb-4">
+      <div class="col-md-6">
+        <div class="card">
+          <div class="card-header">Send Command</div>
+          <div class="card-body">
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label">Meter Address</label>
+                <input type="text" id="cmdMeter" class="form-control"
+                       placeholder="000000001234" maxlength="12">
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Command</label>
+                <select id="cmdType" class="form-select">
+                  <option value="read_register">Read Register</option>
+                  <option value="relay_control">Relay Control</option>
+                  <option value="read_all">Read All</option>
+                </select>
+              </div>
+              <div class="col-md-6" id="registerGroup">
+                <label class="form-label">Register</label>
+                <select id="cmdRegister" class="form-select">
+                  <optgroup label="Energy">
+                    <option value="TOTAL_ACTIVE_POSITIVE">Total Active Energy (+)</option>
+                    <option value="TOTAL_ACTIVE_NEGATIVE">Total Active Energy (-)</option>
+                    <option value="TARIFF_1_ACTIVE">Tariff 1 Active</option>
+                    <option value="TARIFF_2_ACTIVE">Tariff 2 Active</option>
+                  </optgroup>
+                  <optgroup label="Instantaneous">
+                    <option value="VOLTAGE_A">Voltage A</option>
+                    <option value="VOLTAGE_B">Voltage B</option>
+                    <option value="VOLTAGE_C">Voltage C</option>
+                    <option value="CURRENT_A">Current A</option>
+                    <option value="CURRENT_B">Current B</option>
+                    <option value="CURRENT_C">Current C</option>
+                    <option value="ACTIVE_POWER_TOTAL">Active Power Total</option>
+                    <option value="REACTIVE_POWER_TOTAL">Reactive Power Total</option>
+                    <option value="POWER_FACTOR_TOTAL">Power Factor</option>
+                    <option value="FREQUENCY">Frequency</option>
+                  </optgroup>
+                </select>
+              </div>
+              <div class="col-md-6" id="relayGroup" style="display: none;">
+                <label class="form-label">Relay State</label>
+                <select id="cmdRelay" class="form-select">
+                  <option value="close">Close (Connect)</option>
+                  <option value="open">Open (Disconnect)</option>
+                </select>
+              </div>
+              <div class="col-12">
+                <button id="sendCmd" class="btn btn-primary w-100" disabled>
+                  Send Command
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-6">
+        <div class="card h-100">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Command Response</span>
+            <button id="clearResponse" class="btn btn-outline-secondary btn-sm">Clear</button>
+          </div>
+          <div class="card-body">
+            <div id="cmdResponse" class="json-display text-muted">
+              No response yet. Send a command to see the result.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Live Stream -->
+    <div class="row mb-4">
+      <div class="col-12">
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Live Telemetry Stream</span>
+            <div>
+              <span id="messageCount" class="badge bg-info me-2">0 messages</span>
+              <button id="clearLog" class="btn btn-outline-secondary btn-sm">Clear</button>
+              <button id="pauseLog" class="btn btn-outline-warning btn-sm ms-1">Pause</button>
+            </div>
+          </div>
+          <div class="card-body p-0">
+            <div id="logContainer" class="log-container"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- MQTT.js from CDN -->
+  <script src="https://unpkg.com/mqtt@5.3.4/dist/mqtt.min.js"></script>
+  <!-- Bootstrap JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    // ===== State =====
+    let client = null;
+    let isConnected = false;
+    let isPaused = false;
+    let messageCount = 0;
+    const meters = new Map();
+    const pendingCommands = new Map();
+
+    // ===== DOM Elements =====
+    const elements = {
+      connectionStatus: document.getElementById('connectionStatus'),
+      connectBtn: document.getElementById('connectBtn'),
+      mqttHost: document.getElementById('mqttHost'),
+      mqttPort: document.getElementById('mqttPort'),
+      mqttUsername: document.getElementById('mqttUsername'),
+      mqttPassword: document.getElementById('mqttPassword'),
+      saveSettings: document.getElementById('saveSettings'),
+      gatewayStatus: document.getElementById('gatewayStatus'),
+      meterTable: document.getElementById('meterTable'),
+      meterCount: document.getElementById('meterCount'),
+      cmdMeter: document.getElementById('cmdMeter'),
+      cmdType: document.getElementById('cmdType'),
+      cmdRegister: document.getElementById('cmdRegister'),
+      cmdRelay: document.getElementById('cmdRelay'),
+      registerGroup: document.getElementById('registerGroup'),
+      relayGroup: document.getElementById('relayGroup'),
+      sendCmd: document.getElementById('sendCmd'),
+      cmdResponse: document.getElementById('cmdResponse'),
+      logContainer: document.getElementById('logContainer'),
+      messageCount: document.getElementById('messageCount'),
+      clearLog: document.getElementById('clearLog'),
+      clearResponse: document.getElementById('clearResponse'),
+      pauseLog: document.getElementById('pauseLog'),
+    };
+
+    // ===== MQTT Connection =====
+    function connect() {
+      const host = elements.mqttHost.value;
+      const port = elements.mqttPort.value;
+      const username = elements.mqttUsername.value;
+      const password = elements.mqttPassword.value;
+
+      const url = `ws://${host}:${port}`;
+
+      addLog('system', `Connecting to ${url}...`);
+
+      client = mqtt.connect(url, {
+        clientId: `dashboard_${Date.now()}`,
+        username: username,
+        password: password,
+        connectTimeout: 5000,
+        reconnectPeriod: 0, // Manual reconnect
+      });
+
+      client.on('connect', () => {
+        isConnected = true;
+        updateConnectionStatus(true);
+        addLog('system', 'Connected successfully!');
+
+        // Subscribe to all topics
+        const topics = [
+          'ivy/v1/meters/+/telemetry',
+          'ivy/v1/meters/+/status',
+          'ivy/v1/meters/+/events',
+          'ivy/v1/meters/+/command/response',
+          'ivy/v1/gateway/status',
+          'ivy/v1/gateway/stats',
+        ];
+
+        client.subscribe(topics, (err) => {
+          if (err) {
+            addLog('error', `Subscribe error: ${err.message}`);
+          } else {
+            addLog('system', `Subscribed to ${topics.length} topic patterns`);
+          }
+        });
+      });
+
+      client.on('error', (err) => {
+        addLog('error', `Connection error: ${err.message}`);
+        updateConnectionStatus(false);
+      });
+
+      client.on('close', () => {
+        isConnected = false;
+        updateConnectionStatus(false);
+        addLog('system', 'Disconnected');
+      });
+
+      client.on('message', handleMessage);
+    }
+
+    function disconnect() {
+      if (client) {
+        client.end();
+        client = null;
+      }
+      isConnected = false;
+      updateConnectionStatus(false);
+    }
+
+    function updateConnectionStatus(connected) {
+      if (connected) {
+        elements.connectionStatus.textContent = 'Connected';
+        elements.connectionStatus.className = 'badge bg-success badge-pulse';
+        elements.connectBtn.textContent = 'Disconnect';
+        elements.connectBtn.className = 'btn btn-danger btn-sm';
+        elements.sendCmd.disabled = false;
+      } else {
+        elements.connectionStatus.textContent = 'Disconnected';
+        elements.connectionStatus.className = 'badge bg-danger';
+        elements.connectBtn.textContent = 'Connect';
+        elements.connectBtn.className = 'btn btn-success btn-sm';
+        elements.sendCmd.disabled = true;
+      }
+    }
+
+    // ===== Message Handling =====
+    function handleMessage(topic, payload) {
+      messageCount++;
+      elements.messageCount.textContent = `${messageCount} messages`;
+
+      try {
+        const data = JSON.parse(payload.toString());
+        const topicParts = topic.split('/');
+
+        // Route by topic type
+        if (topic.includes('/telemetry')) {
+          const meterId = topicParts[3];
+          handleTelemetry(meterId, data);
+        } else if (topic.includes('/status') && topicParts[2] === 'meters') {
+          const meterId = topicParts[3];
+          handleMeterStatus(meterId, data);
+        } else if (topic.includes('/events')) {
+          const meterId = topicParts[3];
+          handleEvent(meterId, data);
+        } else if (topic.includes('/command/response')) {
+          const meterId = topicParts[3];
+          handleCommandResponse(meterId, data);
+        } else if (topic === 'ivy/v1/gateway/status') {
+          handleGatewayStatus(data);
+        } else if (topic === 'ivy/v1/gateway/stats') {
+          handleGatewayStats(data);
+        }
+
+        // Add to log
+        if (!isPaused) {
+          addLog('message', formatLogEntry(topic, data));
+        }
+
+      } catch (err) {
+        addLog('error', `Parse error: ${err.message}`);
+      }
+    }
+
+    function handleTelemetry(meterId, data) {
+      let meter = meters.get(meterId);
+      if (!meter) {
+        meter = { id: meterId, online: true, lastSeen: Date.now() };
+        meters.set(meterId, meter);
+      }
+
+      meter.lastSeen = Date.now();
+      meter.lastReading = data.value !== undefined
+        ? `${data.value} ${data.unit || ''}`.trim()
+        : JSON.stringify(data.values || data).substring(0, 30);
+
+      updateMeterTable();
+    }
+
+    function handleMeterStatus(meterId, data) {
+      let meter = meters.get(meterId);
+      if (!meter) {
+        meter = { id: meterId };
+        meters.set(meterId, meter);
+      }
+
+      meter.online = data.online;
+      meter.lastSeen = Date.now();
+      if (data.ip) meter.ip = data.ip;
+
+      updateMeterTable();
+    }
+
+    function handleEvent(meterId, data) {
+      addLog('event', `[EVENT] ${meterId}: ${data.event || data.type || 'event'}`);
+    }
+
+    function handleCommandResponse(meterId, data) {
+      elements.cmdResponse.textContent = JSON.stringify(data, null, 2);
+      elements.cmdResponse.className = data.success
+        ? 'json-display text-success'
+        : 'json-display text-danger';
+
+      // Check if this is a pending command
+      if (pendingCommands.has(data.id)) {
+        pendingCommands.delete(data.id);
+      }
+    }
+
+    function handleGatewayStatus(data) {
+      elements.gatewayStatus.innerHTML = `
+        <div class="mb-2">
+          <strong>Status:</strong>
+          <span class="${data.status === 'online' ? 'status-online' : 'status-offline'}">
+            ${data.status || 'unknown'}
+          </span>
+        </div>
+        <div class="mb-2">
+          <strong>Uptime:</strong> ${formatUptime(data.uptime || 0)}
+        </div>
+        <div>
+          <strong>Version:</strong> ${data.version || 'unknown'}
+        </div>
+      `;
+    }
+
+    function handleGatewayStats(data) {
+      elements.gatewayStatus.innerHTML = `
+        <div class="mb-2">
+          <strong>Status:</strong>
+          <span class="${data.status === 'running' ? 'status-online' : 'status-offline'}">
+            ${data.status || 'unknown'}
+          </span>
+        </div>
+        <div class="mb-2">
+          <strong>Uptime:</strong> ${formatUptime(data.uptime || 0)}
+        </div>
+        <div class="mb-2">
+          <strong>Version:</strong> ${data.version || 'unknown'}
+        </div>
+        <div class="mb-2">
+          <strong>Memory:</strong> ${Math.round((data.memory?.heapUsed || 0) / 1024 / 1024)} MB / ${Math.round((data.memory?.heapTotal || 0) / 1024 / 1024)} MB
+        </div>
+        <div class="mb-2">
+          <strong>Meters:</strong> ${data.meters?.online || 0} online / ${data.meters?.total || 0} total
+        </div>
+        <div>
+          <strong>Alarms:</strong> ${data.alarms?.active || 0} active
+        </div>
+      `;
+    }
+
+    // ===== Meter Table =====
+    function updateMeterTable() {
+      if (meters.size === 0) {
+        elements.meterTable.innerHTML = `
+          <tr>
+            <td colspan="5" class="text-center text-muted">No meters connected</td>
+          </tr>
+        `;
+        elements.meterCount.textContent = '0';
+        return;
+      }
+
+      const rows = Array.from(meters.values())
+        .sort((a, b) => a.id.localeCompare(b.id))
+        .map(meter => {
+          const statusIcon = meter.online ? '&#x1F7E2;' : '&#x1F534;';
+          const lastSeen = meter.lastSeen
+            ? formatTimeAgo(meter.lastSeen)
+            : 'Never';
+
+          return `
+            <tr>
+              <td><code>${meter.id}</code></td>
+              <td>${statusIcon}</td>
+              <td>${meter.lastReading || '-'}</td>
+              <td>${lastSeen}</td>
+              <td>
+                <button class="btn btn-outline-primary btn-sm"
+                        onclick="selectMeter('${meter.id}')">
+                  Select
+                </button>
+              </td>
+            </tr>
+          `;
+        })
+        .join('');
+
+      elements.meterTable.innerHTML = rows;
+
+      const onlineCount = Array.from(meters.values()).filter(m => m.online).length;
+      elements.meterCount.textContent = `${onlineCount}/${meters.size}`;
+    }
+
+    function selectMeter(meterId) {
+      elements.cmdMeter.value = meterId;
+    }
+
+    // ===== Send Command =====
+    function sendCommand() {
+      const meterId = elements.cmdMeter.value.trim();
+      const cmdType = elements.cmdType.value;
+
+      if (!meterId || meterId.length !== 12) {
+        alert('Please enter a valid 12-digit meter address');
+        return;
+      }
+
+      const commandId = `cmd_${Date.now()}`;
+      let command = {
+        id: commandId,
+        method: cmdType,
+        params: {},
+      };
+
+      if (cmdType === 'read_register') {
+        command.params.register = elements.cmdRegister.value;
+      } else if (cmdType === 'relay_control') {
+        command.params.state = elements.cmdRelay.value;
+      }
+
+      const topic = `ivy/v1/meters/${meterId}/command/request`;
+
+      addLog('command', `[CMD] ${meterId}: ${cmdType}`);
+      elements.cmdResponse.textContent = 'Sending command...';
+      elements.cmdResponse.className = 'json-display text-warning';
+
+      pendingCommands.set(commandId, { meterId, command, sentAt: Date.now() });
+
+      client.publish(topic, JSON.stringify(command), (err) => {
+        if (err) {
+          elements.cmdResponse.textContent = `Publish error: ${err.message}`;
+          elements.cmdResponse.className = 'json-display text-danger';
+        }
+      });
+    }
+
+    // ===== Log =====
+    function addLog(type, message) {
+      const time = new Date().toLocaleTimeString();
+      const typeColors = {
+        system: 'text-info',
+        error: 'text-danger',
+        message: 'text-light',
+        command: 'text-warning',
+        event: 'text-success',
+      };
+
+      const entry = document.createElement('div');
+      entry.className = `log-entry ${typeColors[type] || ''}`;
+      entry.innerHTML = `<span class="log-time">${time}</span> ${message}`;
+
+      elements.logContainer.insertBefore(entry, elements.logContainer.firstChild);
+
+      // Limit log entries
+      while (elements.logContainer.children.length > 200) {
+        elements.logContainer.removeChild(elements.logContainer.lastChild);
+      }
+    }
+
+    function formatLogEntry(topic, data) {
+      const topicParts = topic.split('/');
+      const shortTopic = topicParts.slice(-2).join('/');
+
+      let valueStr = '';
+      if (data.value !== undefined) {
+        valueStr = `${data.value} ${data.unit || ''}`;
+      } else if (data.values) {
+        valueStr = Object.entries(data.values)
+          .map(([k, v]) => `${k}: ${v}`)
+          .join(', ');
+      } else if (data.online !== undefined) {
+        valueStr = data.online ? 'online' : 'offline';
+      } else {
+        valueStr = JSON.stringify(data).substring(0, 50);
+      }
+
+      return `<span class="log-topic">${shortTopic}</span> &rarr; <span class="log-value">${valueStr}</span>`;
+    }
+
+    // ===== Helpers =====
+    function formatUptime(seconds) {
+      const h = Math.floor(seconds / 3600);
+      const m = Math.floor((seconds % 3600) / 60);
+      const s = Math.floor(seconds % 60);
+      return `${h}h ${m}m ${s}s`;
+    }
+
+    function formatTimeAgo(timestamp) {
+      const seconds = Math.floor((Date.now() - timestamp) / 1000);
+      if (seconds < 5) return 'just now';
+      if (seconds < 60) return `${seconds}s ago`;
+      if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+      return `${Math.floor(seconds / 3600)}h ago`;
+    }
+
+    // ===== Event Listeners =====
+    elements.connectBtn.addEventListener('click', () => {
+      if (isConnected) {
+        disconnect();
+      } else {
+        connect();
+      }
+    });
+
+    elements.cmdType.addEventListener('change', () => {
+      const cmdType = elements.cmdType.value;
+      elements.registerGroup.style.display =
+        (cmdType === 'read_register' || cmdType === 'read_all') ? 'block' : 'none';
+      elements.relayGroup.style.display =
+        cmdType === 'relay_control' ? 'block' : 'none';
+    });
+
+    elements.sendCmd.addEventListener('click', sendCommand);
+
+    elements.clearLog.addEventListener('click', () => {
+      elements.logContainer.innerHTML = '';
+      messageCount = 0;
+      elements.messageCount.textContent = '0 messages';
+    });
+
+    elements.clearResponse.addEventListener('click', () => {
+      elements.cmdResponse.textContent = 'No response yet. Send a command to see the result.';
+      elements.cmdResponse.className = 'json-display text-muted';
+    });
+
+    elements.pauseLog.addEventListener('click', () => {
+      isPaused = !isPaused;
+      elements.pauseLog.textContent = isPaused ? 'Resume' : 'Pause';
+      elements.pauseLog.className = isPaused
+        ? 'btn btn-success btn-sm ms-1'
+        : 'btn btn-outline-warning btn-sm ms-1';
+    });
+
+    elements.saveSettings.addEventListener('click', () => {
+      localStorage.setItem('mqtt_settings', JSON.stringify({
+        host: elements.mqttHost.value,
+        port: elements.mqttPort.value,
+        username: elements.mqttUsername.value,
+      }));
+      addLog('system', 'Settings saved');
+    });
+
+    // Load saved settings
+    const savedSettings = localStorage.getItem('mqtt_settings');
+    if (savedSettings) {
+      try {
+        const settings = JSON.parse(savedSettings);
+        elements.mqttHost.value = settings.host || 'localhost';
+        elements.mqttPort.value = settings.port || 9001;
+        elements.mqttUsername.value = settings.username || 'admin';
+      } catch (e) {}
+    }
+
+    // Update time ago every 5 seconds
+    setInterval(updateMeterTable, 5000);
+
+    // Initial log
+    addLog('system', 'Dashboard ready. Click Connect to start.');
+  </script>
+</body>
+</html>

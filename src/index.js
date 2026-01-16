@@ -12,6 +12,7 @@ import { createTelemetryPublisher } from './mqtt/publisher.js';
 import { createCommandHandler } from './mqtt/command-handler.js';
 import { createPollingManager } from './services/polling-manager.js';
 import { createStatusManager } from './services/status-manager.js';
+import { createHttpServer } from './http/server.js';
 
 /** @type {import('./tcp/server.js').TCPServer|null} */
 let tcpServer = null;
@@ -33,6 +34,9 @@ let pollingManager = null;
 
 /** @type {import('./services/status-manager.js').StatusManager|null} */
 let statusManager = null;
+
+/** @type {Object|null} */
+let httpServer = null;
 
 /**
  * Application startup
@@ -115,9 +119,20 @@ const main = async () => {
     statusManager.start();
     logger.info('Status Manager started');
 
+    // Start HTTP server for dashboard
+    if (config.http?.enabled !== false) {
+      httpServer = createHttpServer();
+      await httpServer.start();
+      logger.info('Dashboard available', {
+        url: `http://localhost:${config.http.port}`,
+      });
+    }
+
     logger.info('IVY 4G Gateway started successfully', {
       tcpPort: config.tcp.port,
       mqttPort: config.mqtt.port,
+      mqttWsPort: config.mqtt.wsPort,
+      httpPort: config.http?.enabled !== false ? config.http.port : 'disabled',
     });
 
     // Setup shutdown handlers
@@ -186,6 +201,11 @@ const shutdown = async () => {
   logger.info('Shutting down...');
 
   try {
+    if (httpServer) {
+      await httpServer.stop();
+      logger.info('HTTP server stopped');
+    }
+
     if (statusManager) {
       statusManager.stop();
       logger.info('Status Manager stopped');
@@ -216,7 +236,7 @@ const shutdown = async () => {
       logger.info('MQTT Broker stopped');
     }
 
-    // TODO: Close other connections (Phase 3)
+    // TODO: Close other connections (future phases)
     // - Close database pool
     // - Disconnect Redis
 
