@@ -77,6 +77,17 @@ export const config = {
     aesKey: process.env.AES_ENCRYPTION_KEY || '',
     operatorCode: process.env.METER_OPERATOR_CODE || '00000000',
     password: process.env.METER_PASSWORD || '00000000',
+    // Rate limiting
+    rateLimiting: {
+      enabled: process.env.RATE_LIMITING_ENABLED !== 'false',
+      maxConnectionsPerIP: parseIntDefault(process.env.MAX_CONNECTIONS_PER_IP, 10),
+      maxConnectionAttempts: parseIntDefault(process.env.MAX_CONNECTION_ATTEMPTS, 20),
+      windowMs: parseIntDefault(process.env.RATE_LIMIT_WINDOW_MS, 60000),
+      blockDuration: parseIntDefault(process.env.RATE_LIMIT_BLOCK_DURATION, 300000),
+    },
+    http: {
+      maxRequestsPerMinute: parseIntDefault(process.env.HTTP_MAX_REQUESTS_PER_MINUTE, 100),
+    },
   },
 
   // Polling

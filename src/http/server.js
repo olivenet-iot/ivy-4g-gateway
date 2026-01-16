@@ -11,6 +11,7 @@ import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 import { createChildLogger } from '../utils/logger.js';
 import config from '../config/index.js';
+import { securityHeaders, httpRateLimiter } from './security.js';
 
 const logger = createChildLogger({ module: 'http-server' });
 
@@ -26,6 +27,12 @@ const __dirname = dirname(__filename);
 export function createHttpServer(options = {}) {
   const app = express();
   const port = options.port || config.http?.port || 3000;
+
+  // Apply security middleware
+  app.use(securityHeaders());
+  app.use(httpRateLimiter({
+    maxRequests: config.security?.http?.maxRequestsPerMinute || 100,
+  }));
 
   // Serve static files from public directory
   const publicPath = join(__dirname, '../../public');
