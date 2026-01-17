@@ -16,16 +16,16 @@ const logger = createChildLogger({ module: 'mqtt-auth' });
  */
 export const DEFAULT_ACL_RULES = [
   {
-    id: 'allow-metpow-sub',
+    id: 'allow-ivy-sub',
     username: '*',
-    pattern: 'metpow/#',
+    pattern: 'ivy/v1/#',
     actions: ['subscribe'],
     allow: true,
   },
   {
-    id: 'allow-metpow-pub',
+    id: 'allow-ivy-pub',
     username: '*',
-    pattern: 'metpow/#',
+    pattern: 'ivy/v1/meters/+/command/request',
     actions: ['publish'],
     allow: true,
   },

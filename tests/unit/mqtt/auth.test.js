@@ -11,10 +11,10 @@ import {
 
 describe('MQTT Auth', () => {
   describe('DEFAULT_ACL_RULES', () => {
-    it('should have default rules for metpow topics', () => {
+    it('should have default rules for ivy/v1 topics', () => {
       expect(DEFAULT_ACL_RULES).toHaveLength(2);
-      expect(DEFAULT_ACL_RULES[0].pattern).toBe('metpow/#');
-      expect(DEFAULT_ACL_RULES[1].pattern).toBe('metpow/#');
+      expect(DEFAULT_ACL_RULES[0].pattern).toBe('ivy/v1/#');
+      expect(DEFAULT_ACL_RULES[1].pattern).toBe('ivy/v1/meters/+/command/request');
     });
   });
 
