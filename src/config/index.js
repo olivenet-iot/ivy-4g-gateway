@@ -112,6 +112,20 @@ export const config = {
     enabled: process.env.HTTP_ENABLED !== 'false', // true by default
     port: parseIntDefault(process.env.HTTP_PORT, 3000),
   },
+
+  // DLMS/COSEM (IVY EM114070 meter protocol)
+  dlms: {
+    enabled: process.env.DLMS_ENABLED !== 'false', // true by default
+    passiveOnly: process.env.DLMS_PASSIVE_ONLY !== 'false', // true by default - only parse, don't query
+    clientAddress: parseIntDefault(process.env.DLMS_CLIENT_ADDRESS, 0x10), // public client
+    associationTimeout: parseIntDefault(process.env.DLMS_ASSOCIATION_TIMEOUT, 5000),
+    queryTimeout: parseIntDefault(process.env.DLMS_QUERY_TIMEOUT, 5000),
+    autoAssociate: process.env.DLMS_AUTO_ASSOCIATE === 'true', // false by default
+    wrapOutgoing: process.env.DLMS_WRAP_OUTGOING !== 'false', // true by default - wrap outgoing DLMS with IVY header
+    ivyDestination: parseIntDefault(process.env.DLMS_IVY_DESTINATION, 0x0001), // IVY destination for DLMS packets
+    captureEnabled: process.env.DLMS_CAPTURE_ENABLED === 'true',
+    captureDuration: parseIntDefault(process.env.DLMS_CAPTURE_DURATION, 3600000), // 1 hour
+  },
 };
 
 /**

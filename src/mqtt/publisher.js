@@ -166,6 +166,7 @@ export class TelemetryPublisher extends EventEmitter {
         value: data.value,
         rawValue: data.rawValue,
         unit: data.unit || '',
+        source: data.source || 'dlt645',
       };
 
       await this.broker.publish(topic, message, {

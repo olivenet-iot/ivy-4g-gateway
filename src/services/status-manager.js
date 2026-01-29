@@ -235,9 +235,24 @@ export class StatusManager extends EventEmitter {
       this.handleMeterDisconnected(meterId);
     });
 
-    // Telemetry received
+    // Telemetry received (DLT645)
     this.tcpServer.on(SERVER_EVENTS.TELEMETRY_RECEIVED, (data) => {
       this.handleTelemetryReceived(data);
+    });
+
+    // DLMS telemetry received (IVY/DLMS meters)
+    this.tcpServer.on(SERVER_EVENTS.DLMS_TELEMETRY_RECEIVED, (data) => {
+      if (data.telemetry?.readings) {
+        for (const [key, reading] of Object.entries(data.telemetry.readings)) {
+          this.handleTelemetryReceived({
+            meterId: data.meterId,
+            value: reading.value,
+            unit: reading.unit || '',
+            register: { key, name: key },
+            source: 'dlms',
+          });
+        }
+      }
     });
   }
 

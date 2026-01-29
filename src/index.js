@@ -12,6 +12,7 @@ import { createTelemetryPublisher } from './mqtt/publisher.js';
 import { createCommandHandler } from './mqtt/command-handler.js';
 import { createPollingManager } from './services/polling-manager.js';
 import { createStatusManager } from './services/status-manager.js';
+import { lookupObis } from './protocol/dlms/obis-registry.js';
 import { createHttpServer } from './http/server.js';
 
 /** @type {import('./tcp/server.js').TCPServer|null} */
@@ -195,6 +196,96 @@ const setupEventHandlers = () => {
       meterAddress: data.meterAddress,
       heartbeatCount: data.heartbeatCount,
     });
+  });
+
+  // DLMS telemetry from IVY/DLMS meters
+  tcpServer.on(SERVER_EVENTS.DLMS_TELEMETRY_RECEIVED, async (data) => {
+    // For GET.response, resolve invokeId to OBIS code via polling manager
+    if (data.apduType === 'get-response' && data.invokeId != null && pollingManager) {
+      const reqInfo = pollingManager.resolveDlmsInvokeId(data.meterId, data.invokeId);
+      if (reqInfo && data.telemetry) {
+        const obisInfo = lookupObis(reqInfo.obisCode);
+        const key = obisInfo?.key || reqInfo.obisCode;
+        const value = data.telemetry.data?.value !== undefined ? data.telemetry.data.value : data.telemetry.data;
+        data.telemetry.readings[key] = {
+          value,
+          unit: obisInfo?.unit || '',
+          obis: reqInfo.obisCode,
+        };
+      }
+    }
+
+    logger.debug('DLMS telemetry received', {
+      meterId: data.meterId,
+      apduType: data.apduType,
+      source: data.source,
+      readings: data.telemetry?.readings ? Object.keys(data.telemetry.readings) : [],
+    });
+
+    // Publish each reading to MQTT
+    if (telemetryPublisher && data.telemetry?.readings) {
+      for (const [key, reading] of Object.entries(data.telemetry.readings)) {
+        let value = reading.value;
+        // Apply scaler from OBIS registry
+        if (reading.obis) {
+          const obisInfo = lookupObis(reading.obis);
+          if (obisInfo?.scaler && typeof value === 'number') {
+            value = Math.round(value * obisInfo.scaler * 1000) / 1000;
+          }
+        }
+        await telemetryPublisher.publishTelemetry(data.meterId, {
+          source: 'dlms',
+          register: { key, name: key },
+          dataIdFormatted: reading.obis || key,
+          value,
+          unit: reading.unit || '',
+          timestamp: data.timestamp,
+        });
+      }
+    }
+  });
+
+  // DLMS events from IVY/DLMS meters
+  tcpServer.on(SERVER_EVENTS.DLMS_EVENT_RECEIVED, async (data) => {
+    logger.info('DLMS event received', {
+      meterId: data.meterId,
+      eventType: data.eventType,
+      source: data.source,
+    });
+
+    if (telemetryPublisher) {
+      await telemetryPublisher.publishMeterEvent(data.meterId, data.eventType, {
+        source: 'dlms',
+        ...data.data,
+      });
+    }
+  });
+
+  // DLMS error responses (GET.response errors, etc.)
+  tcpServer.on(SERVER_EVENTS.DLMS_ERROR_RECEIVED, async (data) => {
+    logger.warn('DLMS error received', {
+      meterId: data.meterId,
+      invokeId: data.invokeId,
+      errorCode: data.errorCode,
+      errorName: data.errorName,
+    });
+
+    let obisInfo = null;
+    if (pollingManager && data.invokeId != null) {
+      obisInfo = pollingManager.resolveDlmsInvokeId(data.meterId, data.invokeId);
+    }
+
+    if (telemetryPublisher) {
+      await telemetryPublisher.publishMeterEvent(data.meterId, 'dlms-error', {
+        source: 'dlms',
+        apduType: data.apduType,
+        invokeId: data.invokeId,
+        errorCode: data.errorCode,
+        errorName: data.errorName,
+        obisCode: obisInfo?.obisCode || null,
+        registerName: obisInfo?.name || null,
+      });
+    }
   });
 
   tcpServer.on(SERVER_EVENTS.SERVER_ERROR, ({ error }) => {

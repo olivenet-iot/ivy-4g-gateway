@@ -38,6 +38,9 @@ export const SERVER_EVENTS = {
   COMMAND_RESPONSE: 'command:response',
   ERROR_RESPONSE: 'error:response',
   HEARTBEAT_RECEIVED: 'heartbeat:received',
+  DLMS_TELEMETRY_RECEIVED: 'dlms:telemetry:received',
+  DLMS_EVENT_RECEIVED: 'dlms:event:received',
+  DLMS_ERROR_RECEIVED: 'dlms:error:received',
 };
 
 /**
@@ -99,6 +102,11 @@ export class TCPServer extends EventEmitter {
     // Handle received frames
     this.connectionManager.on(CONNECTION_EVENTS.FRAME_RECEIVED, ({ connectionId, meterId, frame }) => {
       this.handleFrame(connectionId, meterId, frame);
+    });
+
+    // Handle DLMS data from IVY/DLMS meters
+    this.connectionManager.on(CONNECTION_EVENTS.DLMS_RECEIVED, ({ connectionId, meterId, parsedApdu, telemetry }) => {
+      this.handleDlmsData(connectionId, meterId, parsedApdu, telemetry);
     });
   }
 
@@ -338,6 +346,109 @@ export class TCPServer extends EventEmitter {
       clearTimeout(pending.timeout);
       pending.reject(new Error(result.errorMessage || 'Command failed'));
       connection.pendingCommands.delete(cmdId);
+    }
+  }
+
+  /**
+   * Handle DLMS data received from IVY/DLMS meter
+   * @private
+   * @param {string} connectionId - Connection ID
+   * @param {string|null} meterId - Meter ID (if identified)
+   * @param {Object} parsedApdu - Parsed DLMS APDU
+   * @param {Object|null} telemetry - Extracted telemetry data
+   */
+  handleDlmsData(connectionId, meterId, parsedApdu, telemetry) {
+    if (!parsedApdu) return;
+
+    const apduType = parsedApdu.type;
+
+    if (apduType === 'event-notification' || apduType === 'data-notification') {
+      // Telemetry-bearing APDUs
+      if (telemetry && telemetry.readings && Object.keys(telemetry.readings).length > 0) {
+        this.emit(SERVER_EVENTS.DLMS_TELEMETRY_RECEIVED, {
+          connectionId,
+          meterId,
+          source: 'dlms',
+          apduType,
+          telemetry,
+          timestamp: Date.now(),
+        });
+      }
+
+      // Events (EventNotification with event OBIS codes)
+      if (apduType === 'event-notification' && parsedApdu.obisInfo?.category === 'events') {
+        this.emit(SERVER_EVENTS.DLMS_EVENT_RECEIVED, {
+          connectionId,
+          meterId,
+          source: 'dlms',
+          eventType: parsedApdu.obisInfo?.key || parsedApdu.obisCode || 'unknown',
+          data: parsedApdu,
+          timestamp: Date.now(),
+        });
+      }
+
+      // Also emit as telemetry event for each reading
+      if (telemetry && telemetry.readings) {
+        for (const [key, reading] of Object.entries(telemetry.readings)) {
+          this.emit(SERVER_EVENTS.TELEMETRY_RECEIVED, {
+            connectionId,
+            meterId,
+            source: 'dlms',
+            register: { key, name: reading.obis || key },
+            dataIdFormatted: reading.obis || key,
+            value: reading.value,
+            unit: reading.unit || '',
+            timestamp: Date.now(),
+          });
+        }
+      }
+    } else if (apduType === 'get-response') {
+      if (parsedApdu.accessResult === 'success') {
+        // Emit COMMAND_RESPONSE for pending command resolution
+        const connection = this.connectionManager.getConnection(connectionId);
+        if (connection) {
+          this.emit(SERVER_EVENTS.COMMAND_RESPONSE, {
+            connectionId,
+            meterId,
+            source: 'dlms',
+            invokeId: parsedApdu.invokeId,
+            data: parsedApdu.data,
+          });
+        }
+        // Emit DLMS_TELEMETRY_RECEIVED for MQTT publishing
+        this.emit(SERVER_EVENTS.DLMS_TELEMETRY_RECEIVED, {
+          connectionId,
+          meterId,
+          source: 'dlms',
+          apduType: 'get-response',
+          invokeId: parsedApdu.invokeId,
+          telemetry: {
+            source: 'dlms',
+            type: 'get-response',
+            data: parsedApdu.data,
+            readings: {},
+          },
+          timestamp: Date.now(),
+        });
+      } else if (parsedApdu.accessResult === 'error') {
+        logger.warn('DLMS GET.response error', {
+          connectionId,
+          meterId,
+          invokeId: parsedApdu.invokeId,
+          errorCode: parsedApdu.data?.errorCode,
+          errorName: parsedApdu.data?.errorName,
+        });
+        this.emit(SERVER_EVENTS.DLMS_ERROR_RECEIVED, {
+          connectionId,
+          meterId,
+          source: 'dlms',
+          apduType: 'get-response',
+          invokeId: parsedApdu.invokeId,
+          errorCode: parsedApdu.data?.errorCode,
+          errorName: parsedApdu.data?.errorName,
+          timestamp: Date.now(),
+        });
+      }
     }
   }
 

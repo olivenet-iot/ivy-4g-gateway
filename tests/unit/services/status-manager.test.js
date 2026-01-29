@@ -264,7 +264,7 @@ describe('Status Manager', () => {
         tcpServer: mockTCPServer,
       });
       sm.start();
-      expect(mockTCPServer.on).toHaveBeenCalledTimes(3);
+      expect(mockTCPServer.on).toHaveBeenCalledTimes(4);
       sm.stop();
     });
 

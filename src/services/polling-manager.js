@@ -18,6 +18,8 @@ import { EventEmitter } from 'events';
 import { createChildLogger } from '../utils/logger.js';
 import { buildReadFrame } from '../protocol/frame-builder.js';
 import { ENERGY_REGISTERS, INSTANTANEOUS_REGISTERS } from '../protocol/registers.js';
+import { PROTOCOL_TYPES } from '../protocol/protocol-router.js';
+import { buildAarq, buildGetRequest, buildReleaseRequest, prepareDlmsForSending } from '../protocol/dlms/client.js';
 import config from '../config/index.js';
 
 const logger = createChildLogger({ module: 'polling-manager' });
@@ -67,6 +69,43 @@ export const DEFAULT_POLL_REGISTERS = {
     INSTANTANEOUS_REGISTERS.REACTIVE_POWER_TOTAL,
     INSTANTANEOUS_REGISTERS.POWER_FACTOR_TOTAL,
     INSTANTANEOUS_REGISTERS.FREQUENCY,
+  ],
+};
+
+/**
+ * DLMS OBIS codes to poll by register group.
+ * Each entry has classId (COSEM class) and obisCode.
+ */
+export const DLMS_POLL_REGISTERS = {
+  [REGISTER_GROUPS.ENERGY]: [
+    { classId: 3, obisCode: '1-0:15.8.0.255', name: 'Total energy absolute' },
+    { classId: 3, obisCode: '1-0:12.7.0.255', name: 'Voltage total' },
+    { classId: 3, obisCode: '1-0:11.7.0.255', name: 'Current total' },
+    { classId: 3, obisCode: '1-0:1.7.0.255', name: 'Active power import' },
+    { classId: 3, obisCode: '1-0:14.7.0.255', name: 'Frequency' },
+    { classId: 1, obisCode: '0-0:96.14.0.255', name: 'Current tariff' },
+  ],
+  [REGISTER_GROUPS.INSTANTANEOUS]: [
+    { classId: 3, obisCode: '1-0:12.7.0.255', name: 'Voltage total' },
+    { classId: 3, obisCode: '1-0:11.7.0.255', name: 'Current total' },
+    { classId: 3, obisCode: '1-0:91.7.0.255', name: 'Neutral current' },
+    { classId: 3, obisCode: '1-0:1.7.0.255', name: 'Active power import' },
+    { classId: 3, obisCode: '1-0:3.7.0.255', name: 'Reactive power import' },
+    { classId: 3, obisCode: '1-0:9.7.0.255', name: 'Apparent power import' },
+    { classId: 3, obisCode: '1-0:13.7.0.255', name: 'Power factor total' },
+    { classId: 3, obisCode: '1-0:14.7.0.255', name: 'Frequency' },
+  ],
+  [REGISTER_GROUPS.ALL]: [
+    { classId: 3, obisCode: '1-0:15.8.0.255', name: 'Total energy absolute' },
+    { classId: 3, obisCode: '1-0:12.7.0.255', name: 'Voltage total' },
+    { classId: 3, obisCode: '1-0:11.7.0.255', name: 'Current total' },
+    { classId: 3, obisCode: '1-0:91.7.0.255', name: 'Neutral current' },
+    { classId: 3, obisCode: '1-0:1.7.0.255', name: 'Active power import' },
+    { classId: 3, obisCode: '1-0:3.7.0.255', name: 'Reactive power import' },
+    { classId: 3, obisCode: '1-0:9.7.0.255', name: 'Apparent power import' },
+    { classId: 3, obisCode: '1-0:13.7.0.255', name: 'Power factor total' },
+    { classId: 3, obisCode: '1-0:14.7.0.255', name: 'Frequency' },
+    { classId: 1, obisCode: '0-0:96.14.0.255', name: 'Current tariff' },
   ],
 };
 
@@ -129,6 +168,9 @@ export class PollingManager extends EventEmitter {
 
     /** @type {Map<string, Object>} Per-meter polling stats */
     this.meterStats = new Map();
+
+    /** @type {Map<string, Map<number, Object>>} meterId → Map<invokeId, {obisCode, name, classId, sentAt}> */
+    this.pendingDlmsRequests = new Map();
 
     logger.info('PollingManager created', { options: this.options });
   }
@@ -294,6 +336,17 @@ export class PollingManager extends EventEmitter {
       errors: [],
     };
 
+    // Check protocol type - skip active polling for IVY/DLMS in passive mode
+    const connection = this.tcpServer.connectionManager?.getConnectionByMeter(meterId);
+    if (connection?.protocolType === PROTOCOL_TYPES.IVY_DLMS) {
+      const dlmsConfig = config.dlms || {};
+      if (dlmsConfig.passiveOnly !== false) {
+        logger.debug('Skipping active poll for DLMS meter (passive mode)', { meterId });
+        return { meterId, success: true, readings: [], errors: [], skipped: 'dlms_passive' };
+      }
+      return this.pollDlmsMeter(meterId);
+    }
+
     // Initialize meter stats if needed
     if (!this.meterStats.has(meterId)) {
       this.meterStats.set(meterId, {
@@ -427,6 +480,117 @@ export class PollingManager extends EventEmitter {
   }
 
   /**
+   * Poll a DLMS meter using COSEM GET.request.
+   * Fire-and-forget: sends AARQ, GET requests, and RLRQ.
+   * Responses flow through the standard DLMS event pipeline to MQTT.
+   *
+   * @param {string} meterId - Meter address
+   * @returns {Promise<Object>} Poll result
+   */
+  async pollDlmsMeter(meterId) {
+    const dlmsRegisters = DLMS_POLL_REGISTERS[this.options.registerGroup]
+      || DLMS_POLL_REGISTERS[REGISTER_GROUPS.ENERGY];
+
+    const wrapWithIvy = config.dlms?.wrapOutgoing !== false;
+    logger.info('Starting DLMS active poll', { meterId, registerCount: dlmsRegisters.length, wrapWithIvy });
+
+    const preparePacket = (apdu) => prepareDlmsForSending(apdu, { wrapWithIvy });
+
+    try {
+      // 1. Send AARQ (Association Request)
+      const aarq = preparePacket(buildAarq());
+      logger.debug('Sending AARQ', { meterId, hex: aarq.subarray(0, Math.min(32, aarq.length)).toString('hex') });
+      const sent = await this.tcpServer.sendCommandNoWait(meterId, aarq);
+      if (!sent) {
+        logger.warn('Failed to send AARQ to DLMS meter', { meterId });
+        return { meterId, success: false, readings: [], errors: ['AARQ send failed'] };
+      }
+
+      // Wait for AARE response to be processed
+      await this.delay(config.dlms?.associationTimeout ?? 2000);
+
+      // 2. Send GET.request for each register
+      // Initialize pending requests map for this meter
+      if (!this.pendingDlmsRequests.has(meterId)) {
+        this.pendingDlmsRequests.set(meterId, new Map());
+      }
+      const meterPending = this.pendingDlmsRequests.get(meterId);
+
+      for (let i = 0; i < dlmsRegisters.length; i++) {
+        const reg = dlmsRegisters[i];
+        const invokeId = (i + 1) & 0xFF;
+        const getReq = preparePacket(
+          buildGetRequest(reg.classId, reg.obisCode, 2, invokeId)
+        );
+        // Store invokeId → request info mapping
+        meterPending.set(invokeId, {
+          obisCode: reg.obisCode,
+          name: reg.name,
+          classId: reg.classId,
+          sentAt: Date.now(),
+        });
+        logger.debug('Sending GET.request', { meterId, obisCode: reg.obisCode, invokeId, hex: getReq.subarray(0, Math.min(32, getReq.length)).toString('hex') });
+        await this.tcpServer.sendCommandNoWait(meterId, getReq);
+
+        // Small delay between requests to avoid overwhelming the meter
+        await this.delay(200);
+      }
+
+      // Cleanup stale pending requests after 30s
+      setTimeout(() => {
+        const pending = this.pendingDlmsRequests.get(meterId);
+        if (pending) {
+          const cutoff = Date.now() - 30000;
+          for (const [id, info] of pending) {
+            if (info.sentAt < cutoff) {
+              pending.delete(id);
+            }
+          }
+          if (pending.size === 0) {
+            this.pendingDlmsRequests.delete(meterId);
+          }
+        }
+      }, 30000);
+
+      // 3. Send RLRQ (Release Request)
+      await this.delay(500);
+      const rlrq = preparePacket(buildReleaseRequest());
+      logger.debug('Sending RLRQ', { meterId, hex: rlrq.subarray(0, Math.min(32, rlrq.length)).toString('hex') });
+      await this.tcpServer.sendCommandNoWait(meterId, rlrq);
+
+      logger.info('DLMS active poll requests sent', { meterId, registerCount: dlmsRegisters.length });
+
+      // Responses arrive asynchronously through the DLMS event pipeline
+      return { meterId, success: true, readings: [], errors: [], dlmsPollSent: true };
+    } catch (error) {
+      logger.warn('DLMS active poll failed', { meterId, error: error.message });
+      return { meterId, success: false, readings: [], errors: [error.message] };
+    }
+  }
+
+  /**
+   * Resolve a pending DLMS invoke ID to request info.
+   * Returns and removes the stored mapping, or null if not found.
+   *
+   * @param {string} meterId - Meter address
+   * @param {number} invokeId - DLMS invoke ID from GET.response
+   * @returns {Object|null} { obisCode, name, classId, sentAt } or null
+   */
+  resolveDlmsInvokeId(meterId, invokeId) {
+    const meterPending = this.pendingDlmsRequests.get(meterId);
+    if (!meterPending) return null;
+
+    const info = meterPending.get(invokeId);
+    if (!info) return null;
+
+    meterPending.delete(invokeId);
+    if (meterPending.size === 0) {
+      this.pendingDlmsRequests.delete(meterId);
+    }
+    return info;
+  }
+
+  /**
    * Get registers to poll based on configuration
    * @private
    * @returns {Object[]} Registers
@@ -551,5 +715,6 @@ export default {
   POLLING_EVENTS,
   REGISTER_GROUPS,
   DEFAULT_POLL_REGISTERS,
+  DLMS_POLL_REGISTERS,
   createPollingManager,
 };

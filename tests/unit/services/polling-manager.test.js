@@ -8,6 +8,7 @@ import {
   POLLING_EVENTS,
   REGISTER_GROUPS,
   DEFAULT_POLL_REGISTERS,
+  DLMS_POLL_REGISTERS,
   createPollingManager,
 } from '../../../src/services/polling-manager.js';
 import { ENERGY_REGISTERS, INSTANTANEOUS_REGISTERS } from '../../../src/protocol/registers.js';
@@ -127,6 +128,85 @@ describe('Polling Manager', () => {
       expect(allRegs).toBeDefined();
       expect(allRegs).toContain(ENERGY_REGISTERS.TOTAL_ACTIVE_POSITIVE);
       expect(allRegs).toContain(INSTANTANEOUS_REGISTERS.VOLTAGE_A);
+    });
+  });
+
+  describe('DLMS_POLL_REGISTERS', () => {
+    it('should have ENERGY group with 6 registers', () => {
+      const regs = DLMS_POLL_REGISTERS[REGISTER_GROUPS.ENERGY];
+      expect(regs).toBeDefined();
+      expect(regs).toHaveLength(6);
+    });
+
+    it('should include new OBIS codes in ENERGY group', () => {
+      const regs = DLMS_POLL_REGISTERS[REGISTER_GROUPS.ENERGY];
+      const obisCodes = regs.map(r => r.obisCode);
+      expect(obisCodes).toContain('1-0:15.8.0.255'); // Total energy absolute
+      expect(obisCodes).toContain('1-0:12.7.0.255'); // Voltage total
+      expect(obisCodes).toContain('1-0:11.7.0.255'); // Current total
+      expect(obisCodes).toContain('1-0:1.7.0.255');  // Active power import
+      expect(obisCodes).toContain('1-0:14.7.0.255'); // Frequency
+      expect(obisCodes).toContain('0-0:96.14.0.255'); // Current tariff
+    });
+
+    it('should have INSTANTANEOUS group with 8 registers', () => {
+      const regs = DLMS_POLL_REGISTERS[REGISTER_GROUPS.INSTANTANEOUS];
+      expect(regs).toBeDefined();
+      expect(regs).toHaveLength(8);
+    });
+
+    it('should include new OBIS codes in INSTANTANEOUS group', () => {
+      const regs = DLMS_POLL_REGISTERS[REGISTER_GROUPS.INSTANTANEOUS];
+      const obisCodes = regs.map(r => r.obisCode);
+      expect(obisCodes).toContain('1-0:12.7.0.255'); // Voltage total
+      expect(obisCodes).toContain('1-0:11.7.0.255'); // Current total
+      expect(obisCodes).toContain('1-0:91.7.0.255'); // Neutral current
+      expect(obisCodes).toContain('1-0:3.7.0.255');  // Reactive power import
+      expect(obisCodes).toContain('1-0:9.7.0.255');  // Apparent power import
+    });
+
+    it('should have ALL group with 10 registers', () => {
+      const regs = DLMS_POLL_REGISTERS[REGISTER_GROUPS.ALL];
+      expect(regs).toBeDefined();
+      expect(regs).toHaveLength(10);
+    });
+
+    it('should include all verified numeric OBIS codes in ALL group', () => {
+      const regs = DLMS_POLL_REGISTERS[REGISTER_GROUPS.ALL];
+      const obisCodes = regs.map(r => r.obisCode);
+      expect(obisCodes).toContain('1-0:15.8.0.255'); // Total energy absolute
+      expect(obisCodes).toContain('1-0:12.7.0.255'); // Voltage total
+      expect(obisCodes).toContain('1-0:11.7.0.255'); // Current total
+      expect(obisCodes).toContain('1-0:91.7.0.255'); // Neutral current
+      expect(obisCodes).toContain('1-0:1.7.0.255');  // Active power import
+      expect(obisCodes).toContain('1-0:3.7.0.255');  // Reactive power import
+      expect(obisCodes).toContain('1-0:9.7.0.255');  // Apparent power import
+      expect(obisCodes).toContain('1-0:13.7.0.255'); // Power factor total
+      expect(obisCodes).toContain('1-0:14.7.0.255'); // Frequency
+      expect(obisCodes).toContain('0-0:96.14.0.255'); // Current tariff
+    });
+
+    it('should have correct classId for each entry', () => {
+      const allRegs = [
+        ...DLMS_POLL_REGISTERS[REGISTER_GROUPS.ENERGY],
+        ...DLMS_POLL_REGISTERS[REGISTER_GROUPS.INSTANTANEOUS],
+        ...DLMS_POLL_REGISTERS[REGISTER_GROUPS.ALL],
+      ];
+      for (const reg of allRegs) {
+        expect(reg.classId).toBeDefined();
+        expect(typeof reg.classId).toBe('number');
+        expect(reg.obisCode).toBeDefined();
+        expect(typeof reg.obisCode).toBe('string');
+      }
+    });
+
+    it('should use classId 1 for tariff register and 3 for measurement registers', () => {
+      const allRegs = DLMS_POLL_REGISTERS[REGISTER_GROUPS.ALL];
+      const tariffReg = allRegs.find(r => r.obisCode === '0-0:96.14.0.255');
+      expect(tariffReg.classId).toBe(1);
+
+      const voltageReg = allRegs.find(r => r.obisCode === '1-0:12.7.0.255');
+      expect(voltageReg.classId).toBe(3);
     });
   });
 
@@ -649,6 +729,60 @@ describe('Polling Manager', () => {
 
       expect(stats).toHaveProperty('meter1');
       expect(stats).toHaveProperty('meter2');
+    });
+  });
+
+  describe('resolveDlmsInvokeId', () => {
+    it('should return null when no pending requests exist for meter', () => {
+      const pm = new PollingManager({ tcpServer: mockTCPServer });
+
+      const result = pm.resolveDlmsInvokeId('meter1', 1);
+      expect(result).toBeNull();
+    });
+
+    it('should return null for unknown invokeId', () => {
+      const pm = new PollingManager({ tcpServer: mockTCPServer });
+      pm.pendingDlmsRequests.set('meter1', new Map([
+        [1, { obisCode: '1-0:1.8.0.255', name: 'Test', classId: 3, sentAt: Date.now() }],
+      ]));
+
+      const result = pm.resolveDlmsInvokeId('meter1', 99);
+      expect(result).toBeNull();
+    });
+
+    it('should resolve and remove pending request', () => {
+      const pm = new PollingManager({ tcpServer: mockTCPServer });
+      const info = { obisCode: '1-0:1.8.0.255', name: 'Total active energy import', classId: 3, sentAt: Date.now() };
+      pm.pendingDlmsRequests.set('meter1', new Map([[1, info]]));
+
+      const result = pm.resolveDlmsInvokeId('meter1', 1);
+      expect(result).toEqual(info);
+
+      // Should be removed after resolution
+      expect(pm.resolveDlmsInvokeId('meter1', 1)).toBeNull();
+      // Map for meter should also be cleaned up
+      expect(pm.pendingDlmsRequests.has('meter1')).toBe(false);
+    });
+
+    it('should keep other pending requests when resolving one', () => {
+      const pm = new PollingManager({ tcpServer: mockTCPServer });
+      const info1 = { obisCode: '1-0:1.8.0.255', name: 'Energy', classId: 3, sentAt: Date.now() };
+      const info2 = { obisCode: '1-0:32.7.0.255', name: 'Voltage', classId: 3, sentAt: Date.now() };
+      pm.pendingDlmsRequests.set('meter1', new Map([[1, info1], [2, info2]]));
+
+      const result = pm.resolveDlmsInvokeId('meter1', 1);
+      expect(result).toEqual(info1);
+
+      // Second request should still be pending
+      expect(pm.pendingDlmsRequests.has('meter1')).toBe(true);
+      const result2 = pm.resolveDlmsInvokeId('meter1', 2);
+      expect(result2).toEqual(info2);
+    });
+
+    it('should initialize pendingDlmsRequests as empty Map', () => {
+      const pm = new PollingManager({ tcpServer: mockTCPServer });
+      expect(pm.pendingDlmsRequests).toBeInstanceOf(Map);
+      expect(pm.pendingDlmsRequests.size).toBe(0);
     });
   });
 

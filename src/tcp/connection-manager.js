@@ -16,7 +16,8 @@
 
 import { EventEmitter } from 'events';
 import { createStreamParser } from '../protocol/frame-parser.js';
-import { createHeartbeatHandler, isHeartbeatPacket } from '../protocol/heartbeat-handler.js';
+import { createHeartbeatHandler } from '../protocol/heartbeat-handler.js';
+import { createProtocolRouter } from '../protocol/protocol-router.js';
 import { createChildLogger } from '../utils/logger.js';
 import config from '../config/index.js';
 
@@ -46,6 +47,8 @@ export const CONNECTION_EVENTS = {
   DATA_RECEIVED: 'data:received',
   FRAME_RECEIVED: 'frame:received',
   HEARTBEAT_RECEIVED: 'heartbeat:received',
+  DLMS_RECEIVED: 'dlms:received',
+  PROTOCOL_DETECTED: 'protocol:detected',
 };
 
 /**
@@ -159,7 +162,7 @@ export class ConnectionManager extends EventEmitter {
     const connectionId = this.generateConnectionId();
     const now = Date.now();
 
-    // Create stream parser with callbacks bound to this connection
+    // Create stream parser with callbacks bound to this connection (legacy DLT645 fallback)
     const streamParser = createStreamParser(
       (parsed, frame) => {
         this.handleFrame(connectionId, parsed, frame);
@@ -169,10 +172,34 @@ export class ConnectionManager extends EventEmitter {
       }
     );
 
+    // Create protocol router for auto-detection
+    const protocolRouter = createProtocolRouter({
+      onHeartbeat: (heartbeat) => {
+        this.handleRouterHeartbeat(connectionId, heartbeat);
+      },
+      onDlt645Frame: (parsed, frame) => {
+        this.handleFrame(connectionId, parsed, frame);
+      },
+      onDlt645Error: (error, frame) => {
+        this.handleParseError(connectionId, error, frame);
+      },
+      onDlmsApdu: (parsedApdu, telemetry, raw) => {
+        this.handleDlmsData(connectionId, parsedApdu, telemetry, raw);
+      },
+      onDlmsError: (error) => {
+        const level = error.message.includes('discarding') || error.message.includes('Skipping') ? 'warn' : 'debug';
+        logger[level]('DLMS parse error', { connectionId, error: error.message });
+      },
+      onProtocolDetected: (protocolType) => {
+        this.handleProtocolDetected(connectionId, protocolType);
+      },
+    });
+
     const connection = {
       id: connectionId,
       socket,
       meterId: null,
+      protocolType: null,
       remoteAddress: socket.remoteAddress || 'unknown',
       remotePort: socket.remotePort || 0,
       state: CONNECTION_STATE.CONNECTED,
@@ -183,6 +210,7 @@ export class ConnectionManager extends EventEmitter {
       framesReceived: 0,
       framesSent: 0,
       streamParser,
+      protocolRouter,
       pendingCommands: new Map(), // commandId -> { resolve, reject, timeout }
       lastHeartbeat: null,
       heartbeatCount: 0,
@@ -265,54 +293,92 @@ export class ConnectionManager extends EventEmitter {
       dataLength: data.length,
     });
 
-    // Check for heartbeat packet before passing to DLT645 parser
-    let remaining = data;
-    if (isHeartbeatPacket(data)) {
-      const result = this.heartbeatHandler.handleData(data);
-      if (result.heartbeat && result.heartbeat.valid) {
-        const heartbeat = result.heartbeat;
-        const meterId = this.heartbeatHandler.resolveMeterId(heartbeat, connection);
+    // Route data through the protocol router (auto-detects DLT645 vs IVY/DLMS)
+    connection.protocolRouter.push(data);
+  }
 
-        logger.info('Heartbeat packet received', {
-          connectionId,
-          meterAddress: heartbeat.meterAddress,
-          resolvedMeterId: meterId,
-          remoteAddress: connection.remoteAddress,
-          remotePort: connection.remotePort,
-          raw: heartbeat.raw.toString('hex'),
-          heartbeatCount: connection.heartbeatCount + 1,
-        });
+  /**
+   * Handle heartbeat received via protocol router
+   * @private
+   */
+  handleRouterHeartbeat(connectionId, heartbeat) {
+    const connection = this.connections.get(connectionId);
+    if (!connection) return;
 
-        // Identify connection on first heartbeat
-        if (!connection.meterId) {
-          this.identifyConnection(connectionId, meterId);
-        }
+    const meterId = this.heartbeatHandler.resolveMeterId(heartbeat, connection);
 
-        connection.lastHeartbeat = Date.now();
-        connection.heartbeatCount++;
+    logger.info('Heartbeat packet received', {
+      connectionId,
+      meterAddress: heartbeat.meterAddress,
+      resolvedMeterId: meterId,
+      remoteAddress: connection.remoteAddress,
+      remotePort: connection.remotePort,
+      raw: heartbeat.raw.toString('hex'),
+      heartbeatCount: connection.heartbeatCount + 1,
+    });
 
-        this.emit(CONNECTION_EVENTS.HEARTBEAT_RECEIVED, {
-          connectionId,
-          meterId: connection.meterId,
-          meterAddress: heartbeat.meterAddress,
-          heartbeatCount: connection.heartbeatCount,
-        });
-
-        // Send ACK if configured
-        const ack = this.heartbeatHandler.buildAckResponse();
-        if (ack && connection.socket && !connection.socket.destroyed) {
-          connection.socket.write(ack);
-        }
-
-        // Forward only remaining bytes after the heartbeat
-        remaining = data.subarray(result.consumed);
-      }
+    // Identify connection on first heartbeat
+    if (!connection.meterId) {
+      this.identifyConnection(connectionId, meterId);
     }
 
-    // Parse frames using stream parser (callback-based)
-    if (remaining.length > 0) {
-      connection.streamParser.push(remaining);
+    connection.lastHeartbeat = Date.now();
+    connection.heartbeatCount++;
+
+    this.emit(CONNECTION_EVENTS.HEARTBEAT_RECEIVED, {
+      connectionId,
+      meterId: connection.meterId,
+      meterAddress: heartbeat.meterAddress,
+      heartbeatCount: connection.heartbeatCount,
+    });
+
+    // Send ACK if configured
+    const ack = this.heartbeatHandler.buildAckResponse();
+    if (ack && connection.socket && !connection.socket.destroyed) {
+      connection.socket.write(ack);
     }
+  }
+
+  /**
+   * Handle DLMS data received via protocol router
+   * @private
+   */
+  handleDlmsData(connectionId, parsedApdu, telemetry, raw) {
+    const connection = this.connections.get(connectionId);
+    if (!connection) return;
+
+    connection.framesReceived++;
+
+    this.emit(CONNECTION_EVENTS.DLMS_RECEIVED, {
+      connectionId,
+      meterId: connection.meterId,
+      parsedApdu,
+      telemetry,
+      raw,
+    });
+  }
+
+  /**
+   * Handle protocol detection from router
+   * @private
+   */
+  handleProtocolDetected(connectionId, protocolType) {
+    const connection = this.connections.get(connectionId);
+    if (!connection) return;
+
+    connection.protocolType = protocolType;
+
+    logger.info('Protocol detected for connection', {
+      connectionId,
+      meterId: connection.meterId,
+      protocolType,
+    });
+
+    this.emit(CONNECTION_EVENTS.PROTOCOL_DETECTED, {
+      connectionId,
+      meterId: connection.meterId,
+      protocolType,
+    });
   }
 
   /**
@@ -516,6 +582,13 @@ export class ConnectionManager extends EventEmitter {
       logger.warn('Cannot send to disconnected connection', { connectionId });
       return false;
     }
+
+    logger.debug('Sending data', {
+      connectionId,
+      meterId: connection.meterId,
+      length: data.length,
+      hex: data.subarray(0, Math.min(32, data.length)).toString('hex'),
+    });
 
     return new Promise((resolve, reject) => {
       connection.socket.write(data, (error) => {
