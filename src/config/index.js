@@ -100,6 +100,13 @@ export const config = {
     staggerDelay: parseIntDefault(process.env.POLLING_STAGGER_DELAY, 100),
   },
 
+  // Heartbeat (IVY EM114070 proprietary registration packet)
+  heartbeat: {
+    ackEnabled: process.env.HEARTBEAT_ACK_ENABLED === 'true',
+    ackPayload: process.env.HEARTBEAT_ACK_PAYLOAD || '',
+    zeroAddressAction: process.env.HEARTBEAT_ZERO_ADDRESS_ACTION || 'accept',
+  },
+
   // HTTP Server (Dashboard)
   http: {
     enabled: process.env.HTTP_ENABLED !== 'false', // true by default

@@ -37,6 +37,7 @@ export const SERVER_EVENTS = {
   TELEMETRY_RECEIVED: 'telemetry:received',
   COMMAND_RESPONSE: 'command:response',
   ERROR_RESPONSE: 'error:response',
+  HEARTBEAT_RECEIVED: 'heartbeat:received',
 };
 
 /**
@@ -88,6 +89,11 @@ export class TCPServer extends EventEmitter {
       if (data.meterId) {
         this.emit(SERVER_EVENTS.METER_DISCONNECTED, data);
       }
+    });
+
+    // Forward heartbeat events
+    this.connectionManager.on(CONNECTION_EVENTS.HEARTBEAT_RECEIVED, (data) => {
+      this.emit(SERVER_EVENTS.HEARTBEAT_RECEIVED, data);
     });
 
     // Handle received frames

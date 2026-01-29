@@ -189,6 +189,14 @@ const setupEventHandlers = () => {
     });
   });
 
+  tcpServer.on(SERVER_EVENTS.HEARTBEAT_RECEIVED, (data) => {
+    logger.info('Meter heartbeat received', {
+      meterId: data.meterId,
+      meterAddress: data.meterAddress,
+      heartbeatCount: data.heartbeatCount,
+    });
+  });
+
   tcpServer.on(SERVER_EVENTS.SERVER_ERROR, ({ error }) => {
     logger.error('TCP Server error', { error: error.message });
   });

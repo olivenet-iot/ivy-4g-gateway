@@ -16,6 +16,7 @@
 
 import { EventEmitter } from 'events';
 import { createStreamParser } from '../protocol/frame-parser.js';
+import { createHeartbeatHandler, isHeartbeatPacket } from '../protocol/heartbeat-handler.js';
 import { createChildLogger } from '../utils/logger.js';
 import config from '../config/index.js';
 
@@ -44,6 +45,7 @@ export const CONNECTION_EVENTS = {
   CONNECTION_ERROR: 'connection:error',
   DATA_RECEIVED: 'data:received',
   FRAME_RECEIVED: 'frame:received',
+  HEARTBEAT_RECEIVED: 'heartbeat:received',
 };
 
 /**
@@ -90,6 +92,9 @@ export class ConnectionManager extends EventEmitter {
 
     /** @type {NodeJS.Timeout|null} */
     this.heartbeatTimer = null;
+
+    /** @type {import('../protocol/heartbeat-handler.js').HeartbeatHandler} */
+    this.heartbeatHandler = createHeartbeatHandler(options.heartbeat);
 
     /** @type {boolean} */
     this.isRunning = false;
@@ -179,6 +184,8 @@ export class ConnectionManager extends EventEmitter {
       framesSent: 0,
       streamParser,
       pendingCommands: new Map(), // commandId -> { resolve, reject, timeout }
+      lastHeartbeat: null,
+      heartbeatCount: 0,
     };
 
     this.connections.set(connectionId, connection);
@@ -258,8 +265,54 @@ export class ConnectionManager extends EventEmitter {
       dataLength: data.length,
     });
 
+    // Check for heartbeat packet before passing to DLT645 parser
+    let remaining = data;
+    if (isHeartbeatPacket(data)) {
+      const result = this.heartbeatHandler.handleData(data);
+      if (result.heartbeat && result.heartbeat.valid) {
+        const heartbeat = result.heartbeat;
+        const meterId = this.heartbeatHandler.resolveMeterId(heartbeat, connection);
+
+        logger.info('Heartbeat packet received', {
+          connectionId,
+          meterAddress: heartbeat.meterAddress,
+          resolvedMeterId: meterId,
+          remoteAddress: connection.remoteAddress,
+          remotePort: connection.remotePort,
+          raw: heartbeat.raw.toString('hex'),
+          heartbeatCount: connection.heartbeatCount + 1,
+        });
+
+        // Identify connection on first heartbeat
+        if (!connection.meterId) {
+          this.identifyConnection(connectionId, meterId);
+        }
+
+        connection.lastHeartbeat = Date.now();
+        connection.heartbeatCount++;
+
+        this.emit(CONNECTION_EVENTS.HEARTBEAT_RECEIVED, {
+          connectionId,
+          meterId: connection.meterId,
+          meterAddress: heartbeat.meterAddress,
+          heartbeatCount: connection.heartbeatCount,
+        });
+
+        // Send ACK if configured
+        const ack = this.heartbeatHandler.buildAckResponse();
+        if (ack && connection.socket && !connection.socket.destroyed) {
+          connection.socket.write(ack);
+        }
+
+        // Forward only remaining bytes after the heartbeat
+        remaining = data.subarray(result.consumed);
+      }
+    }
+
     // Parse frames using stream parser (callback-based)
-    connection.streamParser.push(data);
+    if (remaining.length > 0) {
+      connection.streamParser.push(remaining);
+    }
   }
 
   /**
