@@ -471,6 +471,64 @@ Groups can be used with `readGroup` command:
 | `powerFactor` | totalPowerFactor, powerFactorA, powerFactorB, powerFactorC |
 | `all` | All available registers |
 
+## DLMS Telemetry
+
+When a DLMS/COSEM meter sends data, the telemetry payload includes a `source: "dlms"` field.
+
+### DLMS Telemetry Payload
+
+**Topic:** `ivy/v1/meters/{meterId}/telemetry`
+
+```json
+{
+  "meterId": "000000000000",
+  "timestamp": 1706500000000,
+  "source": "dlms",
+  "readings": {
+    "VOLTAGE_TOTAL": {
+      "value": 236.36,
+      "unit": "V",
+      "obis": "1-0:12.7.0.255"
+    },
+    "CURRENT_TOTAL": {
+      "value": 0.5,
+      "unit": "A",
+      "obis": "1-0:11.7.0.255"
+    },
+    "ACTIVE_POWER_IMPORT": {
+      "value": 118,
+      "unit": "W",
+      "obis": "1-0:1.7.0.255"
+    }
+  }
+}
+```
+
+### DLMS Event Types
+
+| Event | APDU | Description |
+|-------|------|-------------|
+| `event-notification` | 0xC2 | Unsolicited push with OBIS code and value |
+| `data-notification` | 0x0F | Unsolicited push with structured data |
+| `get-response` | 0xC4 | Response to active GET.request |
+
+### DLMS OBIS Registers
+
+These registers are available via DLMS polling or push notifications:
+
+| Key | OBIS Code | Unit | Description |
+|-----|-----------|------|-------------|
+| `ACTIVE_POWER_IMPORT` | 1-0:1.7.0.255 | W | Active power import |
+| `REACTIVE_POWER_IMPORT` | 1-0:3.7.0.255 | var | Reactive power import |
+| `APPARENT_POWER_IMPORT` | 1-0:9.7.0.255 | VA | Apparent power import |
+| `CURRENT_TOTAL` | 1-0:11.7.0.255 | A | Current total |
+| `VOLTAGE_TOTAL` | 1-0:12.7.0.255 | V | Voltage total |
+| `POWER_FACTOR_TOTAL` | 1-0:13.7.0.255 | - | Power factor |
+| `FREQUENCY` | 1-0:14.7.0.255 | Hz | Grid frequency |
+| `TOTAL_ENERGY_ABSOLUTE` | 1-0:15.8.0.255 | kWh | Total energy |
+| `CURRENT_NEUTRAL` | 1-0:91.7.0.255 | A | Neutral current |
+| `CURRENT_TARIFF` | 0-0:96.14.0.255 | - | Active tariff number |
+
 ---
 
 For troubleshooting, see [TROUBLESHOOTING.md](TROUBLESHOOTING.md)

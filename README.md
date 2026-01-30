@@ -1,18 +1,28 @@
 # IVY 4G Gateway
 
-IoT gateway that bridges DL/T 645-2007 energy meters to MQTT.
+IoT gateway that bridges energy meters to MQTT, supporting DL/T 645-2007 and DLMS/COSEM protocols.
 
 [![Tests](https://github.com/olivenet-iot/ivy-4g-gateway/actions/workflows/test.yml/badge.svg)](https://github.com/olivenet-iot/ivy-4g-gateway/actions)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ## Features
 
+- **Multi-Protocol Support**: Auto-detects DL/T 645-2007 and DLMS/COSEM meters on the same TCP port
 - **DL/T 645-2007 Protocol**: Full support for Chinese energy meter standard
+- **DLMS/COSEM Protocol**: IVY EM114070 meter support via proprietary IVY wrapper
+- **OBIS Registry**: Extensible OBIS code → name/unit/category mapping with scaler conversion
 - **MQTT Bridge**: Forwards telemetry and commands over MQTT
 - **Web Dashboard**: Real-time monitoring and testing interface
-- **Automatic Polling**: Periodic meter reading with configurable intervals
+- **Automatic Polling**: Periodic meter reading (DLT645 and DLMS) with configurable intervals
 - **Event System**: Voltage, current, power factor alarms
 - **Production Ready**: Systemd service, rate limiting, security hardening
+
+## Supported Meters
+
+| Meter | Protocol | Detection | Features |
+|-------|----------|-----------|----------|
+| Generic DL/T 645-2007 | DLT645 | First byte `0x68` | All standard registers, relay control |
+| IVY EM114070 | DLMS/COSEM via IVY | First bytes `00 01 00 01` | 14 OBIS codes, heartbeat identification |
 
 ## Requirements
 
@@ -49,7 +59,7 @@ For detailed installation: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
 
 | Port | Protocol | Description |
 |------|----------|-------------|
-| 8899 | TCP | Meter connections |
+| 8899 | TCP | Meter connections (DLT645 and IVY/DLMS) |
 | 1883 | MQTT | MQTT Broker |
 | 9001 | WebSocket | MQTT over WebSocket |
 | 3000 | HTTP | Web Dashboard |
@@ -71,15 +81,21 @@ For detailed API: [docs/API.md](docs/API.md)
 ## Architecture
 
 ```
-┌─────────────┐     TCP/DL/T645    ┌─────────────┐      MQTT       ┌─────────────┐
-│   Energy    │ ─────────────────► │    IVY 4G   │ ──────────────► │   Backend   │
-│   Meters    │ ◄───────────────── │   Gateway   │ ◄────────────── │   (Metpow)  │
-└─────────────┘                    └─────────────┘                 └─────────────┘
-                                         │
-                                    ┌────┴────┐
-                                    │ Dashboard│
-                                    │ :3000    │
-                                    └──────────┘
+┌─────────────┐                         ┌─────────────┐      MQTT       ┌─────────────┐
+│  DLT645     │  TCP (0x68 frames)      │             │ ──────────────► │   Backend   │
+│  Meters     │ ───────────────────────►│             │ ◄────────────── │   (Metpow)  │
+└─────────────┘                         │   IVY 4G    │                 └─────────────┘
+                                        │   Gateway   │
+┌─────────────┐  TCP (IVY+DLMS)         │             │
+│  IVY        │ ───────────────────────►│  Protocol   │
+│  EM114070   │                         │  Router     │
+└─────────────┘                         │             │
+                                        └──────┬──────┘
+                                               │
+                                          ┌────┴────┐
+                                          │Dashboard│
+                                          │ :3000   │
+                                          └─────────┘
 ```
 
 ## Testing
@@ -104,10 +120,16 @@ ivy-4g-gateway/
 │   ├── config/            # Configuration
 │   ├── tcp/               # TCP Server & Connection Manager
 │   ├── mqtt/              # MQTT Broker, Publisher, Commands
-│   ├── protocol/          # DL/T 645-2007 Parser & Builder
-│   ├── services/          # Polling, Status Manager
+│   ├── protocol/          # Protocol parsers
+│   │   ├── *.js           # DL/T 645-2007 (frame parser, builder, BCD, checksum)
+│   │   ├── protocol-router.js  # Auto-detect protocol
+│   │   ├── ivy-wrapper.js      # IVY 8-byte header
+│   │   ├── heartbeat-handler.js # IVY heartbeat packets
+│   │   └── dlms/          # DLMS/COSEM (APDU parser, client, OBIS registry)
+│   ├── services/          # Polling, Status, DLMS Capture
 │   ├── http/              # Dashboard Server
 │   └── utils/             # Logger, Helpers
+├── debug/                 # DLMS probe and scan tools
 ├── public/                # Dashboard UI
 ├── scripts/               # Deployment scripts
 ├── tests/                 # Unit & Integration tests
@@ -129,6 +151,7 @@ For all options see: [.env.example](.env.example)
 
 - [Deployment Guide](docs/DEPLOYMENT.md)
 - [MQTT API Reference](docs/API.md)
+- [Protocol Reference](docs/PROTOCOL.md)
 - [Troubleshooting](docs/TROUBLESHOOTING.md)
 
 ## Contributing

@@ -463,6 +463,88 @@ sudo systemctl restart ivy-gateway
 sudo journalctl -u ivy-gateway -f
 ```
 
+## DLMS/IVY Meter Issues
+
+### No Telemetry from DLMS Meter
+
+**Cause:** DLMS support may be disabled or meter isn't being recognized.
+
+**Solutions:**
+
+```bash
+# Check DLMS is enabled
+cat .env | grep DLMS
+
+# Should have:
+DLMS_ENABLED=true
+```
+
+Verify the meter sends a heartbeat packet (26 bytes starting with `00 01 00 01 00 01 00 12 0a 02 0c`):
+
+```bash
+# Check logs for heartbeat detection
+sudo journalctl -u ivy-gateway | grep -i "heartbeat"
+```
+
+### DLMS Association Rejected
+
+**Cause:** Meter doesn't support the requested DLMS application context.
+
+```bash
+# Check for AARE responses
+sudo journalctl -u ivy-gateway | grep -i "aare\|association"
+```
+
+The EM114070 only supports LN_NO_CIPHER context. SN and ciphered contexts are rejected.
+
+### No OBIS Responses
+
+**Cause:** Active polling may be disabled (passive mode is the default).
+
+```bash
+# Enable active DLMS polling
+DLMS_PASSIVE_ONLY=false
+
+# Restart gateway
+sudo systemctl restart ivy-gateway
+```
+
+Verify OBIS codes are in the registry:
+
+```bash
+# Check which codes are registered
+grep "obisCode" src/services/polling-manager.js
+```
+
+### DLMS Capture Service
+
+To diagnose what a DLMS meter is sending, enable the capture service:
+
+```bash
+# In .env
+DLMS_CAPTURE_ENABLED=true
+DLMS_CAPTURE_DURATION=3600000
+
+# Restart and watch logs
+sudo systemctl restart ivy-gateway
+sudo journalctl -u ivy-gateway | grep -i "capture"
+```
+
+The capture service logs all DLMS packets with timing and OBIS inventory.
+
+### Meter Not Identified
+
+If the meter connects but isn't identified:
+
+```bash
+# Check protocol detection
+sudo journalctl -u ivy-gateway | grep "Protocol detected"
+
+# Should show: protocol: ivy_dlms
+```
+
+If it shows `unknown`, the meter may not be sending the expected IVY header or heartbeat.
+
 ---
 
 Still stuck? Create an issue on GitHub with the diagnostic information above.
