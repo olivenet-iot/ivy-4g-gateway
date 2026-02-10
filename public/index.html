@@ -854,6 +854,12 @@ Waiting for command...</div>
         return;
       }
 
+      // Clean up any existing client before creating a new one
+      if (client) {
+        client.end(true);
+        client = null;
+      }
+
       const host = el.mqttHost.value || window.location.hostname;
       const port = el.mqttPort.value || '9001';
       const username = el.mqttUsername.value;
@@ -912,6 +918,12 @@ Waiting for command...</div>
       client.on('error', (err) => {
         clearTimeout(connectTimeout);
         addLog('error', `MQTT error: ${err.message}`);
+        // Stop reconnecting on auth errors - retrying with same credentials is pointless
+        if (err.message && err.message.includes('Not authorized')) {
+          addLog('error', 'Authentication failed. Check username/password.');
+          disconnect();
+          el.connectBtn.textContent = 'Connect';
+        }
         el.connectBtn.disabled = false;
         updateConnectionUI(false);
       });
@@ -939,7 +951,6 @@ Waiting for command...</div>
       }
       isConnected = false;
       updateConnectionUI(false);
-      addLog('system', 'Disconnected from MQTT');
     }
 
     function updateConnectionUI(connected) {
