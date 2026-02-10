@@ -125,7 +125,13 @@ const main = async () => {
 
     // Start HTTP server for dashboard
     if (config.http?.enabled !== false) {
-      httpServer = createHttpServer();
+      httpServer = createHttpServer({
+        tcpServer,
+        publisher: telemetryPublisher,
+        statusManager,
+        pollingManager,
+        commandHandler,
+      });
       await httpServer.start();
       logger.info('Dashboard available', {
         url: `http://localhost:${config.http.port}`,
