@@ -3,251 +3,707 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>IVY 4G Gateway Dashboard</title>
-  <!-- Bootstrap 5 CSS -->
+  <title>IVY 4G Gateway</title>
   <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.2/font/bootstrap-icons.min.css" rel="stylesheet">
   <style>
     :root {
-      --bs-body-bg: #1a1d21;
-      --bs-body-color: #e9ecef;
+      --bg-primary: #0f1117;
+      --bg-secondary: #1a1d27;
+      --bg-card: #1e2130;
+      --bg-card-header: #252840;
+      --bg-input: #252840;
+      --border-color: #2d3154;
+      --text-primary: #e4e6f0;
+      --text-secondary: #8b8fa3;
+      --text-muted: #5d6177;
+      --accent-blue: #4e7cff;
+      --accent-green: #22c55e;
+      --accent-red: #ef4444;
+      --accent-orange: #f59e0b;
+      --accent-cyan: #06b6d4;
+      --accent-purple: #a855f7;
     }
+    * { box-sizing: border-box; }
     body {
-      background-color: var(--bs-body-bg);
-      color: var(--bs-body-color);
-      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg-primary);
+      color: var(--text-primary);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      font-size: 14px;
+      margin: 0;
+      min-height: 100vh;
     }
-    .card {
-      background-color: #212529;
-      border: 1px solid #373b3e;
+    /* Navbar */
+    .top-bar {
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
-    .card-header {
-      background-color: #2b3035;
-      border-bottom: 1px solid #373b3e;
+    .top-bar .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+      font-size: 16px;
     }
-    .table {
-      color: var(--bs-body-color);
+    .top-bar .brand i { color: var(--accent-blue); font-size: 20px; }
+    .top-bar .brand .version {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 400;
     }
-    .form-control, .form-select {
-      background-color: #2b3035;
-      border-color: #373b3e;
-      color: var(--bs-body-color);
+    .top-bar .controls { display: flex; align-items: center; gap: 12px; }
+
+    /* Status badge */
+    .conn-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 500;
     }
-    .form-control:focus, .form-select:focus {
-      background-color: #2b3035;
-      border-color: #0d6efd;
-      color: var(--bs-body-color);
+    .conn-badge.connected { background: rgba(34,197,94,0.15); color: var(--accent-green); }
+    .conn-badge.disconnected { background: rgba(239,68,68,0.15); color: var(--accent-red); }
+    .conn-badge .dot {
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      background: currentColor;
     }
-    .status-online { color: #198754; }
-    .status-offline { color: #dc3545; }
-    .log-entry {
-      font-family: 'Consolas', 'Monaco', monospace;
-      font-size: 0.85rem;
-      padding: 2px 0;
-      border-bottom: 1px solid #373b3e;
+    .conn-badge.connected .dot { animation: pulse-dot 2s infinite; }
+    @keyframes pulse-dot {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
     }
-    .log-container {
-      height: 300px;
-      overflow-y: auto;
-      background-color: #1a1d21;
-      padding: 10px;
+
+    /* Buttons */
+    .btn-connect {
+      background: var(--accent-blue);
+      color: #fff;
+      border: none;
+      padding: 6px 16px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: opacity 0.2s;
+    }
+    .btn-connect:hover { opacity: 0.85; }
+    .btn-connect.danger { background: var(--accent-red); }
+    .btn-sm-action {
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 4px 10px;
+      border-radius: 5px;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .btn-sm-action:hover {
+      border-color: var(--accent-blue);
+      color: var(--accent-blue);
+    }
+    .btn-sm-action.active { border-color: var(--accent-orange); color: var(--accent-orange); }
+    .btn-primary-action {
+      background: var(--accent-blue);
+      color: #fff;
+      border: none;
+      padding: 8px 20px;
+      border-radius: 6px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      width: 100%;
+      transition: opacity 0.2s;
+    }
+    .btn-primary-action:hover { opacity: 0.85; }
+    .btn-primary-action:disabled { opacity: 0.4; cursor: not-allowed; }
+
+    /* Settings toggle */
+    .settings-toggle {
+      background: transparent;
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      width: 32px; height: 32px;
+      border-radius: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .settings-toggle:hover { color: var(--text-primary); border-color: var(--text-secondary); }
+
+    /* Main container */
+    .main { padding: 16px 20px; }
+
+    /* Stat cards row */
+    .stat-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .stat-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .stat-card .label {
+      font-size: 12px;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .stat-card .value {
+      font-size: 26px;
+      font-weight: 700;
+      line-height: 1.2;
+    }
+    .stat-card .sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .stat-card .value.green { color: var(--accent-green); }
+    .stat-card .value.blue { color: var(--accent-blue); }
+    .stat-card .value.orange { color: var(--accent-orange); }
+    .stat-card .value.cyan { color: var(--accent-cyan); }
+
+    /* Cards */
+    .panel {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      margin-bottom: 16px;
+      overflow: hidden;
+    }
+    .panel-header {
+      background: var(--bg-card-header);
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-color);
+      font-weight: 500;
+      font-size: 13px;
+    }
+    .panel-header .badge-count {
+      background: var(--accent-blue);
+      color: #fff;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-weight: 600;
+    }
+    .panel-body { padding: 16px; }
+    .panel-body.no-pad { padding: 0; }
+
+    /* Connection settings panel */
+    .settings-panel {
+      display: none;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border-color);
+      padding: 16px 20px;
+    }
+    .settings-panel.show { display: block; }
+    .settings-panel .form-row {
+      display: flex;
+      gap: 12px;
+      align-items: end;
+      flex-wrap: wrap;
+    }
+    .settings-panel .form-group { flex: 1; min-width: 120px; }
+    .settings-panel label {
+      display: block;
+      font-size: 11px;
+      color: var(--text-secondary);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .form-input {
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 7px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      width: 100%;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-input:focus { border-color: var(--accent-blue); }
+    .form-select {
+      background: var(--bg-input);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 7px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      width: 100%;
+      outline: none;
+      cursor: pointer;
+    }
+    .form-select:focus { border-color: var(--accent-blue); }
+    .form-select option { background: var(--bg-input); color: var(--text-primary); }
+
+    /* Grid layout */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    .grid-main {
+      display: grid;
+      grid-template-columns: 1fr 380px;
+      gap: 16px;
+    }
+    @media (max-width: 1100px) {
+      .grid-main { grid-template-columns: 1fr; }
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+
+    /* Meter table */
+    .meter-table { width: 100%; border-collapse: collapse; }
+    .meter-table th {
+      text-align: left;
+      padding: 8px 12px;
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      border-bottom: 1px solid var(--border-color);
+      font-weight: 500;
+    }
+    .meter-table td {
+      padding: 10px 12px;
+      border-bottom: 1px solid rgba(45,49,84,0.5);
+      font-size: 13px;
+    }
+    .meter-table tr:last-child td { border-bottom: none; }
+    .meter-table tr:hover { background: rgba(78,124,255,0.05); }
+    .meter-table tr.selected { background: rgba(78,124,255,0.1); }
+    .meter-id {
+      font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+      color: var(--accent-cyan);
+      font-size: 13px;
+      cursor: pointer;
+    }
+    .meter-id:hover { text-decoration: underline; }
+    .protocol-badge {
+      font-size: 10px;
+      padding: 2px 6px;
       border-radius: 4px;
+      font-weight: 600;
+      text-transform: uppercase;
     }
-    .log-time { color: #6c757d; }
-    .log-topic { color: #0dcaf0; }
-    .log-meter { color: #ffc107; }
-    .log-value { color: #20c997; }
-    .json-display {
-      background-color: #1a1d21;
-      padding: 10px;
-      border-radius: 4px;
-      font-family: 'Consolas', 'Monaco', monospace;
-      font-size: 0.85rem;
+    .protocol-badge.dlms { background: rgba(168,85,247,0.2); color: var(--accent-purple); }
+    .protocol-badge.dlt645 { background: rgba(245,158,11,0.2); color: var(--accent-orange); }
+    .status-dot {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .status-dot.online { background: var(--accent-green); box-shadow: 0 0 6px rgba(34,197,94,0.4); }
+    .status-dot.offline { background: var(--accent-red); }
+
+    /* Meter detail panel */
+    .detail-empty {
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--text-muted);
+    }
+    .detail-empty i { font-size: 32px; display: block; margin-bottom: 10px; }
+    .detail-header {
+      padding: 16px;
+      border-bottom: 1px solid var(--border-color);
+    }
+    .detail-header .meter-title {
+      font-family: 'SF Mono', 'Consolas', monospace;
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--accent-cyan);
+    }
+    .detail-header .meta {
+      display: flex;
+      gap: 16px;
+      margin-top: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .detail-header .meta span { display: flex; align-items: center; gap: 4px; }
+    .readings-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1px;
+      background: var(--border-color);
+    }
+    .reading-cell {
+      background: var(--bg-card);
+      padding: 12px 16px;
+    }
+    .reading-cell .reading-label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+      margin-bottom: 2px;
+    }
+    .reading-cell .reading-value {
+      font-size: 20px;
+      font-weight: 700;
+    }
+    .reading-cell .reading-unit {
+      font-size: 12px;
+      color: var(--text-muted);
+      font-weight: 400;
+      margin-left: 2px;
+    }
+    .reading-cell .reading-obis {
+      font-size: 10px;
+      color: var(--text-muted);
+      font-family: monospace;
+      margin-top: 2px;
+    }
+
+    /* Command panel */
+    .cmd-form { display: flex; flex-direction: column; gap: 12px; }
+    .cmd-form .form-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .cmd-form .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .cmd-form label {
+      font-size: 11px;
+      color: var(--text-secondary);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Command response */
+    .cmd-response {
+      background: var(--bg-primary);
+      border-radius: 6px;
+      padding: 12px;
+      font-family: 'SF Mono', 'Consolas', monospace;
+      font-size: 12px;
       white-space: pre-wrap;
       word-break: break-all;
-      max-height: 150px;
+      max-height: 200px;
       overflow-y: auto;
+      color: var(--text-secondary);
     }
-    .navbar {
-      background-color: #212529 !important;
-      border-bottom: 1px solid #373b3e;
+    .cmd-response.success { color: var(--accent-green); }
+    .cmd-response.error { color: var(--accent-red); }
+    .cmd-response.pending { color: var(--accent-orange); }
+
+    /* Live log */
+    .log-container {
+      height: 280px;
+      overflow-y: auto;
+      font-family: 'SF Mono', 'Consolas', monospace;
+      font-size: 12px;
+      padding: 8px 12px;
     }
-    .badge-pulse {
-      animation: pulse 2s infinite;
+    .log-entry {
+      padding: 3px 0;
+      border-bottom: 1px solid rgba(45,49,84,0.3);
+      display: flex;
+      gap: 8px;
+      line-height: 1.5;
     }
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
+    .log-entry .log-time { color: var(--text-muted); white-space: nowrap; }
+    .log-entry .log-type {
+      font-size: 10px;
+      padding: 1px 5px;
+      border-radius: 3px;
+      text-transform: uppercase;
+      font-weight: 600;
+      white-space: nowrap;
+      align-self: flex-start;
+      margin-top: 2px;
     }
+    .log-entry .log-type.telemetry { background: rgba(6,182,212,0.15); color: var(--accent-cyan); }
+    .log-entry .log-type.status { background: rgba(34,197,94,0.15); color: var(--accent-green); }
+    .log-entry .log-type.event { background: rgba(245,158,11,0.15); color: var(--accent-orange); }
+    .log-entry .log-type.command { background: rgba(168,85,247,0.15); color: var(--accent-purple); }
+    .log-entry .log-type.system { background: rgba(78,124,255,0.15); color: var(--accent-blue); }
+    .log-entry .log-type.error { background: rgba(239,68,68,0.15); color: var(--accent-red); }
+    .log-entry .log-body { color: var(--text-secondary); flex: 1; word-break: break-all; }
+    .log-entry .log-body .hl-meter { color: var(--accent-cyan); }
+    .log-entry .log-body .hl-value { color: var(--accent-green); }
+    .log-entry .log-body .hl-key { color: var(--text-primary); }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border-color); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+    /* Auto-connect checkbox */
+    .auto-connect-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-secondary);
+      cursor: pointer;
+    }
+    .auto-connect-label input {
+      accent-color: var(--accent-blue);
+    }
+
+    /* Table empty state */
+    .empty-state {
+      text-align: center;
+      padding: 30px;
+      color: var(--text-muted);
+    }
+    .empty-state i { font-size: 28px; display: block; margin-bottom: 8px; }
+
+    /* Alarms */
+    .alarm-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-bottom: 1px solid rgba(45,49,84,0.5);
+    }
+    .alarm-item:last-child { border-bottom: none; }
+    .alarm-severity {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+    .alarm-severity.critical { background: var(--accent-red); }
+    .alarm-severity.warning { background: var(--accent-orange); }
+    .alarm-severity.info { background: var(--accent-blue); }
   </style>
 </head>
 <body>
-  <!-- Navbar -->
-  <nav class="navbar navbar-dark mb-4">
-    <div class="container-fluid">
-      <span class="navbar-brand mb-0 h1">
-        IVY 4G Gateway Dashboard
+
+  <!-- Top Bar -->
+  <div class="top-bar">
+    <div class="brand">
+      <i class="bi bi-lightning-charge-fill"></i>
+      <span>IVY 4G Gateway</span>
+      <span class="version" id="versionLabel">v0.1.0</span>
+    </div>
+    <div class="controls">
+      <label class="auto-connect-label">
+        <input type="checkbox" id="autoConnect"> Auto-connect
+      </label>
+      <span id="connectionBadge" class="conn-badge disconnected">
+        <span class="dot"></span> Disconnected
       </span>
-      <div class="d-flex align-items-center gap-3">
-        <span id="connectionStatus" class="badge bg-danger">Disconnected</span>
-        <button id="connectBtn" class="btn btn-success btn-sm">Connect</button>
+      <button id="connectBtn" class="btn-connect">Connect</button>
+      <button id="settingsBtn" class="settings-toggle" title="Connection Settings">
+        <i class="bi bi-gear"></i>
+      </button>
+    </div>
+  </div>
+
+  <!-- Settings Panel -->
+  <div id="settingsPanel" class="settings-panel">
+    <div class="form-row">
+      <div class="form-group">
+        <label>MQTT Host</label>
+        <input type="text" id="mqttHost" class="form-input" value="localhost">
+      </div>
+      <div class="form-group" style="max-width:120px">
+        <label>WS Port</label>
+        <input type="number" id="mqttPort" class="form-input" value="9001">
+      </div>
+      <div class="form-group">
+        <label>Username</label>
+        <input type="text" id="mqttUsername" class="form-input" value="admin">
+      </div>
+      <div class="form-group">
+        <label>Password</label>
+        <input type="password" id="mqttPassword" class="form-input" value="admin123">
+      </div>
+      <div class="form-group" style="max-width:80px">
+        <label>&nbsp;</label>
+        <button id="saveSettings" class="btn-sm-action" style="padding:7px 12px">Save</button>
       </div>
     </div>
-  </nav>
+  </div>
 
-  <div class="container-fluid">
-    <!-- Connection Settings (collapsible) -->
-    <div class="row mb-4">
-      <div class="col-12">
-        <div class="card">
-          <div class="card-header d-flex justify-content-between align-items-center"
-               data-bs-toggle="collapse" data-bs-target="#connectionSettings"
-               style="cursor: pointer;">
-            <span>Connection Settings</span>
-            <span class="text-muted small">Click to expand</span>
-          </div>
-          <div id="connectionSettings" class="collapse">
-            <div class="card-body">
-              <div class="row g-3">
-                <div class="col-md-3">
-                  <label class="form-label">Host</label>
-                  <input type="text" id="mqttHost" class="form-control" value="localhost">
-                </div>
-                <div class="col-md-2">
-                  <label class="form-label">WS Port</label>
-                  <input type="number" id="mqttPort" class="form-control" value="9001">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Username</label>
-                  <input type="text" id="mqttUsername" class="form-control" value="admin">
-                </div>
-                <div class="col-md-3">
-                  <label class="form-label">Password</label>
-                  <input type="password" id="mqttPassword" class="form-control" value="admin123">
-                </div>
-                <div class="col-md-1 d-flex align-items-end">
-                  <button id="saveSettings" class="btn btn-outline-secondary btn-sm w-100">Save</button>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
+  <!-- Main Content -->
+  <div class="main">
+    <!-- Stat Cards -->
+    <div class="stat-cards">
+      <div class="stat-card">
+        <div class="label">Meters Online</div>
+        <div class="value green" id="statMetersOnline">0</div>
+        <div class="sub" id="statMetersTotal">0 total</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Messages</div>
+        <div class="value blue" id="statMessages">0</div>
+        <div class="sub" id="statMsgRate">0/min</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Active Alarms</div>
+        <div class="value orange" id="statAlarms">0</div>
+        <div class="sub" id="statAlarmsSub">-</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Uptime</div>
+        <div class="value cyan" id="statUptime">-</div>
+        <div class="sub" id="statMemory">-</div>
       </div>
     </div>
 
-    <!-- Gateway Status & Meters -->
-    <div class="row mb-4">
-      <!-- Gateway Status -->
-      <div class="col-md-4">
-        <div class="card h-100">
-          <div class="card-header">Gateway Status</div>
-          <div class="card-body">
-            <div id="gatewayStatus">
-              <p class="text-muted">Waiting for data...</p>
-            </div>
+    <!-- Main Grid: Meters table + Detail panel -->
+    <div class="grid-main">
+      <!-- Left: Meters -->
+      <div>
+        <div class="panel">
+          <div class="panel-header">
+            <span><i class="bi bi-cpu me-1"></i> Connected Meters</span>
+            <span class="badge-count" id="meterCountBadge">0</span>
           </div>
-        </div>
-      </div>
-
-      <!-- Connected Meters -->
-      <div class="col-md-8">
-        <div class="card h-100">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <span>Connected Meters</span>
-            <span id="meterCount" class="badge bg-secondary">0</span>
-          </div>
-          <div class="card-body p-0">
-            <div class="table-responsive">
-              <table class="table table-hover mb-0">
+          <div class="panel-body no-pad">
+            <div style="overflow-x:auto">
+              <table class="meter-table">
                 <thead>
                   <tr>
-                    <th>Address</th>
+                    <th>Meter ID</th>
                     <th>Status</th>
+                    <th>Protocol</th>
+                    <th>IP Address</th>
                     <th>Last Reading</th>
                     <th>Last Seen</th>
-                    <th>Actions</th>
                   </tr>
                 </thead>
-                <tbody id="meterTable">
+                <tbody id="meterTableBody">
                   <tr>
-                    <td colspan="5" class="text-center text-muted">No meters connected</td>
+                    <td colspan="6">
+                      <div class="empty-state">
+                        <i class="bi bi-inbox"></i>
+                        No meters connected
+                      </div>
+                    </td>
                   </tr>
                 </tbody>
               </table>
             </div>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- Command Panel & Response -->
-    <div class="row mb-4">
-      <div class="col-md-6">
-        <div class="card">
-          <div class="card-header">Send Command</div>
-          <div class="card-body">
-            <div class="row g-3">
-              <div class="col-md-6">
-                <label class="form-label">Meter Address</label>
-                <input type="text" id="cmdMeter" class="form-control"
-                       placeholder="000000001234" maxlength="12">
-              </div>
-              <div class="col-md-6">
-                <label class="form-label">Command</label>
-                <select id="cmdType" class="form-select">
-                  <option value="read_register">Read Register</option>
-                  <option value="relay_control">Relay Control</option>
-                  <option value="read_all">Read All</option>
-                </select>
-              </div>
-              <div class="col-md-6" id="registerGroup">
-                <label class="form-label">Register</label>
-                <select id="cmdRegister" class="form-select">
-                  <optgroup label="Energy">
-                    <option value="TOTAL_ACTIVE_POSITIVE">Total Active Energy (+)</option>
-                    <option value="TOTAL_ACTIVE_NEGATIVE">Total Active Energy (-)</option>
-                    <option value="TARIFF_1_ACTIVE">Tariff 1 Active</option>
-                    <option value="TARIFF_2_ACTIVE">Tariff 2 Active</option>
-                  </optgroup>
-                  <optgroup label="Instantaneous">
-                    <option value="VOLTAGE_A">Voltage A</option>
-                    <option value="VOLTAGE_B">Voltage B</option>
-                    <option value="VOLTAGE_C">Voltage C</option>
-                    <option value="CURRENT_A">Current A</option>
-                    <option value="CURRENT_B">Current B</option>
-                    <option value="CURRENT_C">Current C</option>
-                    <option value="ACTIVE_POWER_TOTAL">Active Power Total</option>
-                    <option value="REACTIVE_POWER_TOTAL">Reactive Power Total</option>
-                    <option value="POWER_FACTOR_TOTAL">Power Factor</option>
-                    <option value="FREQUENCY">Frequency</option>
-                  </optgroup>
-                </select>
-              </div>
-              <div class="col-md-6" id="relayGroup" style="display: none;">
-                <label class="form-label">Relay State</label>
-                <select id="cmdRelay" class="form-select">
-                  <option value="close">Close (Connect)</option>
-                  <option value="open">Open (Disconnect)</option>
-                </select>
-              </div>
-              <div class="col-12">
-                <button id="sendCmd" class="btn btn-primary w-100" disabled>
-                  Send Command
+        <!-- Command Panel + Response -->
+        <div class="grid-2">
+          <div class="panel">
+            <div class="panel-header">
+              <span><i class="bi bi-terminal me-1"></i> Send Command</span>
+            </div>
+            <div class="panel-body">
+              <div class="cmd-form">
+                <div class="form-row">
+                  <div class="form-group">
+                    <label>Meter Address</label>
+                    <input type="text" id="cmdMeter" class="form-input" placeholder="000000001234" maxlength="12">
+                  </div>
+                  <div class="form-group">
+                    <label>Command</label>
+                    <select id="cmdType" class="form-select">
+                      <option value="read_register">Read Register</option>
+                      <option value="read_all">Read All</option>
+                      <option value="relay_control">Relay Control</option>
+                      <option value="read_relay_state">Read Relay State</option>
+                      <option value="read_address">Read Address</option>
+                    </select>
+                  </div>
+                </div>
+                <div id="registerGroup" class="form-group">
+                  <label>Register</label>
+                  <select id="cmdRegister" class="form-select">
+                    <optgroup label="Energy">
+                      <option value="TOTAL_ACTIVE_POSITIVE">Total Active Energy (+)</option>
+                      <option value="TOTAL_ACTIVE_NEGATIVE">Total Active Energy (-)</option>
+                      <option value="TARIFF_1_ACTIVE">Tariff 1 Active</option>
+                      <option value="TARIFF_2_ACTIVE">Tariff 2 Active</option>
+                    </optgroup>
+                    <optgroup label="Instantaneous">
+                      <option value="VOLTAGE_A">Voltage A</option>
+                      <option value="VOLTAGE_B">Voltage B</option>
+                      <option value="VOLTAGE_C">Voltage C</option>
+                      <option value="CURRENT_A">Current A</option>
+                      <option value="CURRENT_B">Current B</option>
+                      <option value="CURRENT_C">Current C</option>
+                      <option value="ACTIVE_POWER_TOTAL">Active Power Total</option>
+                      <option value="REACTIVE_POWER_TOTAL">Reactive Power Total</option>
+                      <option value="POWER_FACTOR_TOTAL">Power Factor</option>
+                      <option value="FREQUENCY">Frequency</option>
+                    </optgroup>
+                  </select>
+                </div>
+                <div id="relayGroup" class="form-group" style="display:none">
+                  <label>Relay State</label>
+                  <select id="cmdRelay" class="form-select">
+                    <option value="close">Close (Reconnect)</option>
+                    <option value="open">Open (Disconnect)</option>
+                  </select>
+                </div>
+                <button id="sendCmd" class="btn-primary-action" disabled>
+                  <i class="bi bi-send me-1"></i> Send Command
                 </button>
               </div>
+            </div>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <span><i class="bi bi-chat-square-text me-1"></i> Response</span>
+              <button id="clearResponse" class="btn-sm-action">Clear</button>
+            </div>
+            <div class="panel-body">
+              <div id="cmdResponse" class="cmd-response">
+Waiting for command...</div>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="col-md-6">
-        <div class="card h-100">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <span>Command Response</span>
-            <button id="clearResponse" class="btn btn-outline-secondary btn-sm">Clear</button>
+      <!-- Right: Meter Detail -->
+      <div>
+        <div class="panel" id="detailPanel" style="position:sticky;top:60px">
+          <div class="panel-header">
+            <span><i class="bi bi-speedometer2 me-1"></i> Meter Detail</span>
+            <button id="refreshDetail" class="btn-sm-action" style="display:none">
+              <i class="bi bi-arrow-clockwise"></i>
+            </button>
           </div>
-          <div class="card-body">
-            <div id="cmdResponse" class="json-display text-muted">
-              No response yet. Send a command to see the result.
+          <div id="detailContent">
+            <div class="detail-empty">
+              <i class="bi bi-hand-index"></i>
+              Click on a meter to view live readings
+            </div>
+          </div>
+        </div>
+
+        <!-- Alarms -->
+        <div class="panel" id="alarmsPanel">
+          <div class="panel-header">
+            <span><i class="bi bi-exclamation-triangle me-1"></i> Events & Alarms</span>
+            <span class="badge-count" id="alarmCountBadge">0</span>
+          </div>
+          <div id="alarmsContent" class="panel-body no-pad" style="max-height:200px;overflow-y:auto">
+            <div class="empty-state" style="padding:20px">
+              <i class="bi bi-check-circle"></i>
+              No active alarms
             </div>
           </div>
         </div>
@@ -255,29 +711,27 @@
     </div>
 
     <!-- Live Stream -->
-    <div class="row mb-4">
-      <div class="col-12">
-        <div class="card">
-          <div class="card-header d-flex justify-content-between align-items-center">
-            <span>Live Telemetry Stream</span>
-            <div>
-              <span id="messageCount" class="badge bg-info me-2">0 messages</span>
-              <button id="clearLog" class="btn btn-outline-secondary btn-sm">Clear</button>
-              <button id="pauseLog" class="btn btn-outline-warning btn-sm ms-1">Pause</button>
-            </div>
-          </div>
-          <div class="card-body p-0">
-            <div id="logContainer" class="log-container"></div>
-          </div>
+    <div class="panel">
+      <div class="panel-header">
+        <span><i class="bi bi-broadcast me-1"></i> Live Stream</span>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span id="logMsgCount" class="badge-count">0</span>
+          <button id="pauseLog" class="btn-sm-action">
+            <i class="bi bi-pause-fill"></i> Pause
+          </button>
+          <button id="clearLog" class="btn-sm-action">
+            <i class="bi bi-trash3"></i> Clear
+          </button>
         </div>
       </div>
+      <div class="panel-body no-pad">
+        <div id="logContainer" class="log-container"></div>
+      </div>
     </div>
-
   </div>
 
-  <!-- MQTT.js from CDN -->
+  <!-- MQTT.js + Bootstrap JS -->
   <script src="https://unpkg.com/mqtt@5.3.4/dist/mqtt.min.js"></script>
-  <!-- Bootstrap JS -->
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
 
   <script>
@@ -286,88 +740,160 @@
     let isConnected = false;
     let isPaused = false;
     let messageCount = 0;
-    const meters = new Map();
+    let msgTimestamps = []; // for rate calculation
+    const meters = new Map(); // meterId -> { id, online, protocolType, ip, lastSeen, readings, connectedAt }
     const pendingCommands = new Map();
+    let selectedMeterId = null;
+    let gatewayUptime = 0;
+    let gatewayVersion = '';
 
     // ===== DOM Elements =====
-    const elements = {
-      connectionStatus: document.getElementById('connectionStatus'),
-      connectBtn: document.getElementById('connectBtn'),
-      mqttHost: document.getElementById('mqttHost'),
-      mqttPort: document.getElementById('mqttPort'),
-      mqttUsername: document.getElementById('mqttUsername'),
-      mqttPassword: document.getElementById('mqttPassword'),
-      saveSettings: document.getElementById('saveSettings'),
-      gatewayStatus: document.getElementById('gatewayStatus'),
-      meterTable: document.getElementById('meterTable'),
-      meterCount: document.getElementById('meterCount'),
-      cmdMeter: document.getElementById('cmdMeter'),
-      cmdType: document.getElementById('cmdType'),
-      cmdRegister: document.getElementById('cmdRegister'),
-      cmdRelay: document.getElementById('cmdRelay'),
-      registerGroup: document.getElementById('registerGroup'),
-      relayGroup: document.getElementById('relayGroup'),
-      sendCmd: document.getElementById('sendCmd'),
-      cmdResponse: document.getElementById('cmdResponse'),
-      logContainer: document.getElementById('logContainer'),
-      messageCount: document.getElementById('messageCount'),
-      clearLog: document.getElementById('clearLog'),
-      clearResponse: document.getElementById('clearResponse'),
-      pauseLog: document.getElementById('pauseLog'),
+    const $ = (id) => document.getElementById(id);
+    const el = {
+      connectionBadge: $('connectionBadge'),
+      connectBtn: $('connectBtn'),
+      settingsBtn: $('settingsBtn'),
+      settingsPanel: $('settingsPanel'),
+      mqttHost: $('mqttHost'),
+      mqttPort: $('mqttPort'),
+      mqttUsername: $('mqttUsername'),
+      mqttPassword: $('mqttPassword'),
+      saveSettings: $('saveSettings'),
+      autoConnect: $('autoConnect'),
+      versionLabel: $('versionLabel'),
+      // Stats
+      statMetersOnline: $('statMetersOnline'),
+      statMetersTotal: $('statMetersTotal'),
+      statMessages: $('statMessages'),
+      statMsgRate: $('statMsgRate'),
+      statAlarms: $('statAlarms'),
+      statAlarmsSub: $('statAlarmsSub'),
+      statUptime: $('statUptime'),
+      statMemory: $('statMemory'),
+      // Meters
+      meterTableBody: $('meterTableBody'),
+      meterCountBadge: $('meterCountBadge'),
+      // Detail
+      detailContent: $('detailContent'),
+      refreshDetail: $('refreshDetail'),
+      // Commands
+      cmdMeter: $('cmdMeter'),
+      cmdType: $('cmdType'),
+      cmdRegister: $('cmdRegister'),
+      cmdRelay: $('cmdRelay'),
+      registerGroup: $('registerGroup'),
+      relayGroup: $('relayGroup'),
+      sendCmd: $('sendCmd'),
+      cmdResponse: $('cmdResponse'),
+      clearResponse: $('clearResponse'),
+      // Log
+      logContainer: $('logContainer'),
+      logMsgCount: $('logMsgCount'),
+      clearLog: $('clearLog'),
+      pauseLog: $('pauseLog'),
+      // Alarms
+      alarmsContent: $('alarmsContent'),
+      alarmCountBadge: $('alarmCountBadge'),
     };
+
+    // ===== Fetch initial state from REST API =====
+    async function fetchInitialState() {
+      try {
+        const [infoRes, metersRes] = await Promise.all([
+          fetch('/api/info').then(r => r.json()).catch(() => null),
+          fetch('/api/meters').then(r => r.json()).catch(() => null),
+        ]);
+
+        if (infoRes) {
+          gatewayVersion = infoRes.version || '';
+          el.versionLabel.textContent = 'v' + (infoRes.version || '0.1.0');
+          if (infoRes.mqtt?.wsPort) {
+            el.mqttPort.value = infoRes.mqtt.wsPort;
+          }
+          if (infoRes.uptime) {
+            gatewayUptime = infoRes.uptime;
+          }
+        }
+
+        if (metersRes?.meters) {
+          for (const m of metersRes.meters) {
+            const existing = meters.get(m.meterId) || {};
+            const readings = {};
+            // Convert lastTelemetry to readings map
+            if (m.lastTelemetry) {
+              for (const [key, val] of Object.entries(m.lastTelemetry)) {
+                if (key.startsWith('_')) continue;
+                if (val && typeof val === 'object' && val.value !== undefined) {
+                  readings[key] = val;
+                }
+              }
+            }
+            meters.set(m.meterId, {
+              ...existing,
+              id: m.meterId,
+              online: m.online,
+              protocolType: m.protocolType,
+              ip: m.remoteAddress,
+              connectedAt: m.connectedAt,
+              lastSeen: m.lastActivity || Date.now(),
+              readings,
+            });
+          }
+          updateMeterTable();
+          updateStats();
+        }
+      } catch { /* ignore */ }
+    }
 
     // ===== MQTT Connection =====
     function connect() {
-      const host = elements.mqttHost.value;
-      const port = elements.mqttPort.value;
-      const username = elements.mqttUsername.value;
-      const password = elements.mqttPassword.value;
-
+      const host = el.mqttHost.value;
+      const port = el.mqttPort.value;
+      const username = el.mqttUsername.value;
+      const password = el.mqttPassword.value;
       const url = `ws://${host}:${port}`;
 
       addLog('system', `Connecting to ${url}...`);
 
-      client = mqtt.connect(url, {
-        clientId: `dashboard_${Date.now()}`,
-        username: username,
-        password: password,
-        connectTimeout: 5000,
-        reconnectPeriod: 0, // Manual reconnect
-      });
+      try {
+        client = mqtt.connect(url, {
+          clientId: `dashboard_${Date.now()}`,
+          username, password,
+          connectTimeout: 5000,
+          reconnectPeriod: 0,
+        });
+      } catch (err) {
+        addLog('error', `Connection failed: ${err.message}`);
+        return;
+      }
 
       client.on('connect', () => {
         isConnected = true;
-        updateConnectionStatus(true);
-        addLog('system', 'Connected successfully!');
+        updateConnectionUI(true);
+        addLog('system', 'Connected to MQTT broker');
 
-        // Subscribe to all topics
-        const topics = [
+        client.subscribe([
           'ivy/v1/meters/+/telemetry',
           'ivy/v1/meters/+/status',
           'ivy/v1/meters/+/events',
           'ivy/v1/meters/+/command/response',
           'ivy/v1/gateway/status',
           'ivy/v1/gateway/stats',
-        ];
-
-        client.subscribe(topics, (err) => {
-          if (err) {
-            addLog('error', `Subscribe error: ${err.message}`);
-          } else {
-            addLog('system', `Subscribed to ${topics.length} topic patterns`);
-          }
+        ], (err) => {
+          if (err) addLog('error', `Subscribe failed: ${err.message}`);
+          else addLog('system', 'Subscribed to all topics');
         });
       });
 
       client.on('error', (err) => {
-        addLog('error', `Connection error: ${err.message}`);
-        updateConnectionStatus(false);
+        addLog('error', `MQTT error: ${err.message}`);
+        updateConnectionUI(false);
       });
 
       client.on('close', () => {
         isConnected = false;
-        updateConnectionStatus(false);
-        addLog('system', 'Disconnected');
+        updateConnectionUI(false);
+        addLog('system', 'Disconnected from MQTT');
       });
 
       client.on('message', handleMessage);
@@ -375,237 +901,335 @@
 
     function disconnect() {
       if (client) {
-        client.end();
+        client.end(true);
         client = null;
       }
       isConnected = false;
-      updateConnectionStatus(false);
+      updateConnectionUI(false);
     }
 
-    function updateConnectionStatus(connected) {
+    function updateConnectionUI(connected) {
       if (connected) {
-        elements.connectionStatus.textContent = 'Connected';
-        elements.connectionStatus.className = 'badge bg-success badge-pulse';
-        elements.connectBtn.textContent = 'Disconnect';
-        elements.connectBtn.className = 'btn btn-danger btn-sm';
-        elements.sendCmd.disabled = false;
+        el.connectionBadge.className = 'conn-badge connected';
+        el.connectionBadge.innerHTML = '<span class="dot"></span> Connected';
+        el.connectBtn.textContent = 'Disconnect';
+        el.connectBtn.className = 'btn-connect danger';
+        el.sendCmd.disabled = false;
       } else {
-        elements.connectionStatus.textContent = 'Disconnected';
-        elements.connectionStatus.className = 'badge bg-danger';
-        elements.connectBtn.textContent = 'Connect';
-        elements.connectBtn.className = 'btn btn-success btn-sm';
-        elements.sendCmd.disabled = true;
+        el.connectionBadge.className = 'conn-badge disconnected';
+        el.connectionBadge.innerHTML = '<span class="dot"></span> Disconnected';
+        el.connectBtn.textContent = 'Connect';
+        el.connectBtn.className = 'btn-connect';
+        el.sendCmd.disabled = true;
       }
     }
 
     // ===== Message Handling =====
     function handleMessage(topic, payload) {
       messageCount++;
-      elements.messageCount.textContent = `${messageCount} messages`;
+      msgTimestamps.push(Date.now());
+      el.statMessages.textContent = messageCount;
 
       try {
         const data = JSON.parse(payload.toString());
-        const topicParts = topic.split('/');
+        const parts = topic.split('/');
 
-        // Route by topic type
         if (topic.includes('/telemetry')) {
-          const meterId = topicParts[3];
-          handleTelemetry(meterId, data);
-        } else if (topic.includes('/status') && topicParts[2] === 'meters') {
-          const meterId = topicParts[3];
-          handleMeterStatus(meterId, data);
+          handleTelemetry(parts[3], data);
+        } else if (topic.includes('/status') && parts[2] === 'meters') {
+          handleMeterStatus(parts[3], data);
         } else if (topic.includes('/events')) {
-          const meterId = topicParts[3];
-          handleEvent(meterId, data);
+          handleEvent(parts[3], data);
         } else if (topic.includes('/command/response')) {
-          const meterId = topicParts[3];
-          handleCommandResponse(meterId, data);
+          handleCommandResponse(parts[3], data);
         } else if (topic === 'ivy/v1/gateway/status') {
           handleGatewayStatus(data);
         } else if (topic === 'ivy/v1/gateway/stats') {
           handleGatewayStats(data);
         }
 
-        // Add to log
         if (!isPaused) {
-          addLog('message', formatLogEntry(topic, data));
+          addMessageLog(topic, parts, data);
         }
-
       } catch (err) {
         addLog('error', `Parse error: ${err.message}`);
       }
     }
 
     function handleTelemetry(meterId, data) {
-      let meter = meters.get(meterId);
-      if (!meter) {
-        meter = { id: meterId, online: true, lastSeen: Date.now() };
-        meters.set(meterId, meter);
+      let meter = meters.get(meterId) || { id: meterId, online: true, readings: {} };
+      meter.lastSeen = Date.now();
+
+      if (data.values) {
+        // Batch telemetry
+        for (const [key, val] of Object.entries(data.values)) {
+          meter.readings[key] = typeof val === 'object' ? val : { value: val };
+          if (!meter.readings[key].ts) meter.readings[key].ts = data.ts;
+        }
+      } else if (data.register && data.value !== undefined) {
+        // Single reading
+        meter.readings[data.register] = {
+          value: data.value,
+          unit: data.unit || '',
+          ts: data.ts,
+          obis: data.dataId,
+        };
       }
 
-      meter.lastSeen = Date.now();
-      meter.lastReading = data.value !== undefined
-        ? `${data.value} ${data.unit || ''}`.trim()
-        : JSON.stringify(data.values || data).substring(0, 30);
+      if (data.source === 'dlms' && !meter.protocolType) {
+        meter.protocolType = 'IVY_DLMS';
+      }
 
+      meters.set(meterId, meter);
       updateMeterTable();
+      if (selectedMeterId === meterId) updateDetailPanel();
     }
 
     function handleMeterStatus(meterId, data) {
-      let meter = meters.get(meterId);
-      if (!meter) {
-        meter = { id: meterId };
-        meters.set(meterId, meter);
-      }
-
+      let meter = meters.get(meterId) || { id: meterId, readings: {} };
       meter.online = data.online;
       meter.lastSeen = Date.now();
       if (data.ip) meter.ip = data.ip;
-
+      meters.set(meterId, meter);
       updateMeterTable();
+      updateStats();
+      if (selectedMeterId === meterId) updateDetailPanel();
     }
 
     function handleEvent(meterId, data) {
-      addLog('event', `[EVENT] ${meterId}: ${data.event || data.type || 'event'}`);
+      const eventText = data.event || data.type || 'event';
+      addLog('event', `<span class="hl-meter">${meterId}</span> ${eventText}` +
+        (data.data ? ` (${JSON.stringify(data.data)})` : ''));
+      addAlarmEntry(meterId, data);
     }
 
     function handleCommandResponse(meterId, data) {
-      elements.cmdResponse.textContent = JSON.stringify(data, null, 2);
-      elements.cmdResponse.className = data.success
-        ? 'json-display text-success'
-        : 'json-display text-danger';
-
-      // Check if this is a pending command
+      el.cmdResponse.textContent = JSON.stringify(data, null, 2);
+      el.cmdResponse.className = data.success
+        ? 'cmd-response success'
+        : 'cmd-response error';
       if (pendingCommands.has(data.id)) {
         pendingCommands.delete(data.id);
       }
     }
 
     function handleGatewayStatus(data) {
-      elements.gatewayStatus.innerHTML = `
-        <div class="mb-2">
-          <strong>Status:</strong>
-          <span class="${data.status === 'online' ? 'status-online' : 'status-offline'}">
-            ${data.status || 'unknown'}
-          </span>
-        </div>
-        <div class="mb-2">
-          <strong>Uptime:</strong> ${formatUptime(data.uptime || 0)}
-        </div>
-        <div>
-          <strong>Version:</strong> ${data.version || 'unknown'}
-        </div>
-      `;
+      if (data.uptime) gatewayUptime = data.uptime;
+      if (data.version) {
+        gatewayVersion = data.version;
+        el.versionLabel.textContent = 'v' + data.version;
+      }
+      updateStats();
     }
 
     function handleGatewayStats(data) {
-      elements.gatewayStatus.innerHTML = `
-        <div class="mb-2">
-          <strong>Status:</strong>
-          <span class="${data.status === 'running' ? 'status-online' : 'status-offline'}">
-            ${data.status || 'unknown'}
-          </span>
-        </div>
-        <div class="mb-2">
-          <strong>Uptime:</strong> ${formatUptime(data.uptime || 0)}
-        </div>
-        <div class="mb-2">
-          <strong>Version:</strong> ${data.version || 'unknown'}
-        </div>
-        <div class="mb-2">
-          <strong>Memory:</strong> ${Math.round((data.memory?.heapUsed || 0) / 1024 / 1024)} MB / ${Math.round((data.memory?.heapTotal || 0) / 1024 / 1024)} MB
-        </div>
-        <div class="mb-2">
-          <strong>Meters:</strong> ${data.meters?.online || 0} online / ${data.meters?.total || 0} total
-        </div>
-        <div>
-          <strong>Alarms:</strong> ${data.alarms?.active || 0} active
-        </div>
-      `;
+      if (data.uptime) gatewayUptime = data.uptime;
+      if (data.version) {
+        gatewayVersion = data.version;
+        el.versionLabel.textContent = 'v' + data.version;
+      }
+      if (data.memory) {
+        const heapMB = Math.round(data.memory.heapUsed / 1024 / 1024);
+        const rssMB = Math.round(data.memory.rss / 1024 / 1024);
+        el.statMemory.textContent = `Heap: ${heapMB} MB / RSS: ${rssMB} MB`;
+      }
+      if (data.alarms) {
+        el.statAlarms.textContent = data.alarms.active || 0;
+        el.statAlarmsSub.textContent = `${data.alarms.total || 0} total`;
+      }
+      updateStats();
     }
 
-    // ===== Meter Table =====
+    // ===== UI Updates =====
+    function updateStats() {
+      const online = Array.from(meters.values()).filter(m => m.online).length;
+      const total = meters.size;
+      el.statMetersOnline.textContent = online;
+      el.statMetersTotal.textContent = `${total} total`;
+      if (gatewayUptime > 0) {
+        el.statUptime.textContent = formatUptime(gatewayUptime);
+      }
+    }
+
     function updateMeterTable() {
       if (meters.size === 0) {
-        elements.meterTable.innerHTML = `
-          <tr>
-            <td colspan="5" class="text-center text-muted">No meters connected</td>
-          </tr>
-        `;
-        elements.meterCount.textContent = '0';
+        el.meterTableBody.innerHTML = `<tr><td colspan="6"><div class="empty-state">
+          <i class="bi bi-inbox"></i>No meters connected</div></td></tr>`;
+        el.meterCountBadge.textContent = '0';
         return;
       }
 
-      const rows = Array.from(meters.values())
-        .sort((a, b) => a.id.localeCompare(b.id))
-        .map(meter => {
-          const statusIcon = meter.online ? '&#x1F7E2;' : '&#x1F534;';
-          const lastSeen = meter.lastSeen
-            ? formatTimeAgo(meter.lastSeen)
-            : 'Never';
+      const sorted = Array.from(meters.values()).sort((a, b) => {
+        if (a.online !== b.online) return a.online ? -1 : 1;
+        return (a.id || '').localeCompare(b.id || '');
+      });
 
-          return `
-            <tr>
-              <td><code>${meter.id}</code></td>
-              <td>${statusIcon}</td>
-              <td>${meter.lastReading || '-'}</td>
-              <td>${lastSeen}</td>
-              <td>
-                <button class="btn btn-outline-primary btn-sm"
-                        onclick="selectMeter('${meter.id}')">
-                  Select
-                </button>
-              </td>
-            </tr>
-          `;
-        })
-        .join('');
+      el.meterTableBody.innerHTML = sorted.map(m => {
+        const proto = getProtocolBadge(m.protocolType);
+        const statusClass = m.online ? 'online' : 'offline';
+        const lastReading = getLastReadingSummary(m);
+        const lastSeen = m.lastSeen ? formatTimeAgo(m.lastSeen) : '-';
+        const selectedClass = selectedMeterId === m.id ? ' selected' : '';
 
-      elements.meterTable.innerHTML = rows;
+        return `<tr class="${selectedClass}" data-meter="${m.id}">
+          <td><span class="meter-id" onclick="selectMeter('${m.id}')">${m.id}</span></td>
+          <td><span class="status-dot ${statusClass}"></span></td>
+          <td>${proto}</td>
+          <td style="color:var(--text-secondary);font-size:12px">${m.ip || '-'}</td>
+          <td style="font-size:12px">${lastReading}</td>
+          <td style="color:var(--text-muted);font-size:12px">${lastSeen}</td>
+        </tr>`;
+      }).join('');
 
-      const onlineCount = Array.from(meters.values()).filter(m => m.online).length;
-      elements.meterCount.textContent = `${onlineCount}/${meters.size}`;
+      const online = sorted.filter(m => m.online).length;
+      el.meterCountBadge.textContent = `${online}/${meters.size}`;
+      updateStats();
+    }
+
+    function getProtocolBadge(type) {
+      if (type === 'IVY_DLMS') return '<span class="protocol-badge dlms">DLMS</span>';
+      if (type === 'DLT645') return '<span class="protocol-badge dlt645">DLT645</span>';
+      return '<span style="color:var(--text-muted);font-size:11px">-</span>';
+    }
+
+    function getLastReadingSummary(meter) {
+      if (!meter.readings || Object.keys(meter.readings).length === 0) return '-';
+      const keys = Object.keys(meter.readings).filter(k => !k.startsWith('_'));
+      if (keys.length === 0) return '-';
+
+      // Show first meaningful value
+      for (const key of keys) {
+        const r = meter.readings[key];
+        if (r && r.value !== undefined) {
+          const name = formatRegisterName(key);
+          return `<span style="color:var(--text-primary)">${r.value}</span> <span style="color:var(--text-muted)">${r.unit || ''}</span> <span style="color:var(--text-muted);font-size:11px">(${name})</span>`;
+        }
+      }
+      return '-';
     }
 
     function selectMeter(meterId) {
-      elements.cmdMeter.value = meterId;
+      selectedMeterId = meterId;
+      el.cmdMeter.value = meterId;
+      el.refreshDetail.style.display = 'inline-block';
+      updateMeterTable();
+      updateDetailPanel();
     }
 
-    // ===== Send Command =====
-    function sendCommand() {
-      const meterId = elements.cmdMeter.value.trim();
-      const cmdType = elements.cmdType.value;
-
-      if (!meterId || meterId.length !== 12) {
-        alert('Please enter a valid 12-digit meter address');
+    function updateDetailPanel() {
+      if (!selectedMeterId) return;
+      const meter = meters.get(selectedMeterId);
+      if (!meter) {
+        el.detailContent.innerHTML = '<div class="detail-empty"><i class="bi bi-question-circle"></i>Meter not found</div>';
         return;
       }
 
-      const commandId = `cmd_${Date.now()}`;
-      let command = {
-        id: commandId,
-        method: cmdType,
-        params: {},
-      };
+      const statusClass = meter.online ? 'online' : 'offline';
+      const statusText = meter.online ? 'Online' : 'Offline';
+      const proto = meter.protocolType === 'IVY_DLMS' ? 'DLMS/COSEM' :
+                     meter.protocolType === 'DLT645' ? 'DL/T 645-2007' : 'Unknown';
+      const connTime = meter.connectedAt ? new Date(meter.connectedAt).toLocaleTimeString() : '-';
+
+      let readingsHtml = '';
+      const readingKeys = Object.keys(meter.readings || {}).filter(k => !k.startsWith('_'));
+
+      if (readingKeys.length > 0) {
+        readingsHtml = '<div class="readings-grid">';
+        for (const key of readingKeys) {
+          const r = meter.readings[key];
+          if (!r || r.value === undefined) continue;
+          const name = formatRegisterName(key);
+          const obis = r.obis || '';
+          readingsHtml += `<div class="reading-cell">
+            <div class="reading-label">${name}</div>
+            <div class="reading-value">${formatValue(r.value)}<span class="reading-unit">${r.unit || ''}</span></div>
+            ${obis ? `<div class="reading-obis">${obis}</div>` : ''}
+          </div>`;
+        }
+        readingsHtml += '</div>';
+      } else {
+        readingsHtml = '<div style="padding:20px;text-align:center;color:var(--text-muted)">No readings yet. Waiting for telemetry...</div>';
+      }
+
+      el.detailContent.innerHTML = `
+        <div class="detail-header">
+          <div class="detail-header-row" style="display:flex;justify-content:space-between;align-items:center">
+            <div class="meter-title">${meter.id}</div>
+            <span class="status-dot ${statusClass}" style="width:10px;height:10px"></span>
+          </div>
+          <div class="meta">
+            <span><i class="bi bi-diagram-3"></i> ${proto}</span>
+            <span><i class="bi bi-globe2"></i> ${meter.ip || '-'}</span>
+            <span><i class="bi bi-clock"></i> ${connTime}</span>
+            <span class="status-${statusClass}">${statusText}</span>
+          </div>
+        </div>
+        ${readingsHtml}
+      `;
+    }
+
+    // ===== Alarms =====
+    const alarmEntries = [];
+    function addAlarmEntry(meterId, data) {
+      alarmEntries.unshift({ meterId, ...data, ts: Date.now() });
+      if (alarmEntries.length > 50) alarmEntries.pop();
+      renderAlarms();
+    }
+
+    function renderAlarms() {
+      if (alarmEntries.length === 0) {
+        el.alarmsContent.innerHTML = '<div class="empty-state" style="padding:20px"><i class="bi bi-check-circle"></i>No active alarms</div>';
+        el.alarmCountBadge.textContent = '0';
+        return;
+      }
+      el.alarmCountBadge.textContent = alarmEntries.length;
+      el.alarmsContent.innerHTML = alarmEntries.slice(0, 20).map(a => {
+        const severity = a.data?.severity || 'info';
+        const time = new Date(a.ts).toLocaleTimeString();
+        const eventName = a.event || a.type || 'event';
+        return `<div class="alarm-item">
+          <span class="alarm-severity ${severity}"></span>
+          <span style="color:var(--text-muted);font-size:11px;white-space:nowrap">${time}</span>
+          <span class="meter-id" style="font-size:11px;cursor:default">${a.meterId}</span>
+          <span style="flex:1;font-size:12px">${eventName}</span>
+        </div>`;
+      }).join('');
+    }
+
+    // ===== Commands =====
+    function sendCommand() {
+      const meterId = el.cmdMeter.value.trim();
+      const cmdType = el.cmdType.value;
+
+      if (!meterId || meterId.length !== 12) {
+        el.cmdResponse.textContent = 'Error: Enter a valid 12-digit meter address';
+        el.cmdResponse.className = 'cmd-response error';
+        return;
+      }
+
+      const cmdId = `cmd_${Date.now()}`;
+      const command = { id: cmdId, method: cmdType, params: {} };
 
       if (cmdType === 'read_register') {
-        command.params.register = elements.cmdRegister.value;
+        command.params.register = el.cmdRegister.value;
       } else if (cmdType === 'relay_control') {
-        command.params.state = elements.cmdRelay.value;
+        command.params.state = el.cmdRelay.value;
       }
 
       const topic = `ivy/v1/meters/${meterId}/command/request`;
 
-      addLog('command', `[CMD] ${meterId}: ${cmdType}`);
-      elements.cmdResponse.textContent = 'Sending command...';
-      elements.cmdResponse.className = 'json-display text-warning';
+      el.cmdResponse.textContent = `Sending ${cmdType}...`;
+      el.cmdResponse.className = 'cmd-response pending';
+      pendingCommands.set(cmdId, { meterId, command, sentAt: Date.now() });
 
-      pendingCommands.set(commandId, { meterId, command, sentAt: Date.now() });
+      addLog('command', `<span class="hl-meter">${meterId}</span> ${cmdType}` +
+        (command.params.register ? ` (${command.params.register})` : '') +
+        (command.params.state ? ` (${command.params.state})` : ''));
 
       client.publish(topic, JSON.stringify(command), (err) => {
         if (err) {
-          elements.cmdResponse.textContent = `Publish error: ${err.message}`;
-          elements.cmdResponse.className = 'json-display text-danger';
+          el.cmdResponse.textContent = `Publish error: ${err.message}`;
+          el.cmdResponse.className = 'cmd-response error';
         }
       });
     }
@@ -613,125 +1237,168 @@
     // ===== Log =====
     function addLog(type, message) {
       const time = new Date().toLocaleTimeString();
-      const typeColors = {
-        system: 'text-info',
-        error: 'text-danger',
-        message: 'text-light',
-        command: 'text-warning',
-        event: 'text-success',
-      };
-
       const entry = document.createElement('div');
-      entry.className = `log-entry ${typeColors[type] || ''}`;
-      entry.innerHTML = `<span class="log-time">${time}</span> ${message}`;
-
-      elements.logContainer.insertBefore(entry, elements.logContainer.firstChild);
-
-      // Limit log entries
-      while (elements.logContainer.children.length > 200) {
-        elements.logContainer.removeChild(elements.logContainer.lastChild);
+      entry.className = 'log-entry';
+      entry.innerHTML = `<span class="log-time">${time}</span><span class="log-type ${type}">${type}</span><span class="log-body">${message}</span>`;
+      el.logContainer.insertBefore(entry, el.logContainer.firstChild);
+      while (el.logContainer.children.length > 300) {
+        el.logContainer.removeChild(el.logContainer.lastChild);
       }
+      el.logMsgCount.textContent = el.logContainer.children.length;
     }
 
-    function formatLogEntry(topic, data) {
-      const topicParts = topic.split('/');
-      const shortTopic = topicParts.slice(-2).join('/');
+    function addMessageLog(topic, parts, data) {
+      const type = topic.includes('/telemetry') ? 'telemetry' :
+                   topic.includes('/status') ? 'status' :
+                   topic.includes('/events') ? 'event' :
+                   topic.includes('/command') ? 'command' : 'system';
+      const meterId = parts.length > 3 ? parts[3] : '';
 
-      let valueStr = '';
-      if (data.value !== undefined) {
-        valueStr = `${data.value} ${data.unit || ''}`;
-      } else if (data.values) {
-        valueStr = Object.entries(data.values)
-          .map(([k, v]) => `${k}: ${v}`)
-          .join(', ');
-      } else if (data.online !== undefined) {
-        valueStr = data.online ? 'online' : 'offline';
+      let body = '';
+      if (type === 'telemetry') {
+        if (data.values) {
+          const entries = Object.entries(data.values).map(([k, v]) => {
+            const val = typeof v === 'object' ? v.value : v;
+            const unit = typeof v === 'object' ? (v.unit || '') : '';
+            return `<span class="hl-key">${formatRegisterName(k)}</span>: <span class="hl-value">${val} ${unit}</span>`;
+          });
+          body = `<span class="hl-meter">${meterId}</span> ${entries.join(', ')}`;
+        } else {
+          body = `<span class="hl-meter">${meterId}</span> <span class="hl-key">${formatRegisterName(data.register)}</span>: <span class="hl-value">${data.value} ${data.unit || ''}</span>`;
+        }
+      } else if (type === 'status') {
+        body = `<span class="hl-meter">${meterId}</span> ${data.online ? '<span class="hl-value">online</span>' : '<span style="color:var(--accent-red)">offline</span>'}`;
+        if (data.ip) body += ` (${data.ip})`;
+      } else if (type === 'event') {
+        body = `<span class="hl-meter">${meterId}</span> ${data.event || data.type || 'event'}`;
+      } else if (type === 'command') {
+        const success = data.success ? '<span class="hl-value">OK</span>' : '<span style="color:var(--accent-red)">FAIL</span>';
+        body = `<span class="hl-meter">${meterId}</span> ${success} ${data.result ? JSON.stringify(data.result).substring(0, 80) : (data.error || '')}`;
       } else {
-        valueStr = JSON.stringify(data).substring(0, 50);
+        body = JSON.stringify(data).substring(0, 100);
       }
 
-      return `<span class="log-topic">${shortTopic}</span> &rarr; <span class="log-value">${valueStr}</span>`;
+      addLog(type, body);
     }
 
     // ===== Helpers =====
     function formatUptime(seconds) {
-      const h = Math.floor(seconds / 3600);
+      const d = Math.floor(seconds / 86400);
+      const h = Math.floor((seconds % 86400) / 3600);
       const m = Math.floor((seconds % 3600) / 60);
-      const s = Math.floor(seconds % 60);
-      return `${h}h ${m}m ${s}s`;
+      if (d > 0) return `${d}d ${h}h ${m}m`;
+      if (h > 0) return `${h}h ${m}m`;
+      return `${m}m ${Math.floor(seconds % 60)}s`;
     }
 
-    function formatTimeAgo(timestamp) {
-      const seconds = Math.floor((Date.now() - timestamp) / 1000);
-      if (seconds < 5) return 'just now';
-      if (seconds < 60) return `${seconds}s ago`;
-      if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
-      return `${Math.floor(seconds / 3600)}h ago`;
+    function formatTimeAgo(ts) {
+      const s = Math.floor((Date.now() - ts) / 1000);
+      if (s < 5) return 'just now';
+      if (s < 60) return `${s}s ago`;
+      if (s < 3600) return `${Math.floor(s / 60)}m ago`;
+      if (s < 86400) return `${Math.floor(s / 3600)}h ago`;
+      return `${Math.floor(s / 86400)}d ago`;
+    }
+
+    function formatRegisterName(key) {
+      if (!key) return '';
+      return key.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())
+        .replace(/Total/g, '').replace(/Active/g, 'Act.')
+        .replace(/Positive/g, '+').replace(/Negative/g, '-')
+        .replace(/  +/g, ' ').trim();
+    }
+
+    function formatValue(v) {
+      if (typeof v === 'number') {
+        return v % 1 === 0 ? v.toString() : v.toFixed(3).replace(/0+$/, '').replace(/\.$/, '');
+      }
+      return String(v);
+    }
+
+    // ===== Message rate =====
+    function calcMsgRate() {
+      const now = Date.now();
+      msgTimestamps = msgTimestamps.filter(t => now - t < 60000);
+      el.statMsgRate.textContent = `${msgTimestamps.length}/min`;
     }
 
     // ===== Event Listeners =====
-    elements.connectBtn.addEventListener('click', () => {
-      if (isConnected) {
-        disconnect();
-      } else {
-        connect();
-      }
+    el.connectBtn.addEventListener('click', () => {
+      isConnected ? disconnect() : connect();
     });
 
-    elements.cmdType.addEventListener('change', () => {
-      const cmdType = elements.cmdType.value;
-      elements.registerGroup.style.display =
-        (cmdType === 'read_register' || cmdType === 'read_all') ? 'block' : 'none';
-      elements.relayGroup.style.display =
-        cmdType === 'relay_control' ? 'block' : 'none';
+    el.settingsBtn.addEventListener('click', () => {
+      el.settingsPanel.classList.toggle('show');
     });
 
-    elements.sendCmd.addEventListener('click', sendCommand);
-
-    elements.clearLog.addEventListener('click', () => {
-      elements.logContainer.innerHTML = '';
-      messageCount = 0;
-      elements.messageCount.textContent = '0 messages';
+    el.cmdType.addEventListener('change', () => {
+      const t = el.cmdType.value;
+      el.registerGroup.style.display = (t === 'read_register' || t === 'read_all') ? 'block' : 'none';
+      el.relayGroup.style.display = t === 'relay_control' ? 'block' : 'none';
     });
 
-    elements.clearResponse.addEventListener('click', () => {
-      elements.cmdResponse.textContent = 'No response yet. Send a command to see the result.';
-      elements.cmdResponse.className = 'json-display text-muted';
+    el.sendCmd.addEventListener('click', sendCommand);
+
+    el.clearLog.addEventListener('click', () => {
+      el.logContainer.innerHTML = '';
+      el.logMsgCount.textContent = '0';
     });
 
-    elements.pauseLog.addEventListener('click', () => {
+    el.clearResponse.addEventListener('click', () => {
+      el.cmdResponse.textContent = 'Waiting for command...';
+      el.cmdResponse.className = 'cmd-response';
+    });
+
+    el.pauseLog.addEventListener('click', () => {
       isPaused = !isPaused;
-      elements.pauseLog.textContent = isPaused ? 'Resume' : 'Pause';
-      elements.pauseLog.className = isPaused
-        ? 'btn btn-success btn-sm ms-1'
-        : 'btn btn-outline-warning btn-sm ms-1';
+      el.pauseLog.innerHTML = isPaused
+        ? '<i class="bi bi-play-fill"></i> Resume'
+        : '<i class="bi bi-pause-fill"></i> Pause';
+      if (isPaused) el.pauseLog.classList.add('active');
+      else el.pauseLog.classList.remove('active');
     });
 
-    elements.saveSettings.addEventListener('click', () => {
-      localStorage.setItem('mqtt_settings', JSON.stringify({
-        host: elements.mqttHost.value,
-        port: elements.mqttPort.value,
-        username: elements.mqttUsername.value,
+    el.saveSettings.addEventListener('click', () => {
+      localStorage.setItem('ivy_mqtt_settings', JSON.stringify({
+        host: el.mqttHost.value,
+        port: el.mqttPort.value,
+        username: el.mqttUsername.value,
+        autoConnect: el.autoConnect.checked,
       }));
       addLog('system', 'Settings saved');
     });
 
+    el.refreshDetail.addEventListener('click', () => {
+      if (selectedMeterId) updateDetailPanel();
+    });
+
     // Load saved settings
-    const savedSettings = localStorage.getItem('mqtt_settings');
-    if (savedSettings) {
-      try {
-        const settings = JSON.parse(savedSettings);
-        elements.mqttHost.value = settings.host || 'localhost';
-        elements.mqttPort.value = settings.port || 9001;
-        elements.mqttUsername.value = settings.username || 'admin';
-      } catch (e) {}
-    }
+    try {
+      const saved = JSON.parse(localStorage.getItem('ivy_mqtt_settings') || '{}');
+      if (saved.host) el.mqttHost.value = saved.host;
+      if (saved.port) el.mqttPort.value = saved.port;
+      if (saved.username) el.mqttUsername.value = saved.username;
+      if (saved.autoConnect) el.autoConnect.checked = true;
+    } catch {}
 
-    // Update time ago every 5 seconds
+    // Periodic updates
     setInterval(updateMeterTable, 5000);
+    setInterval(calcMsgRate, 5000);
+    setInterval(() => {
+      if (gatewayUptime > 0) {
+        gatewayUptime++;
+        el.statUptime.textContent = formatUptime(gatewayUptime);
+      }
+    }, 1000);
 
-    // Initial log
+    // Init
+    fetchInitialState();
     addLog('system', 'Dashboard ready. Click Connect to start.');
+
+    // Auto-connect
+    setTimeout(() => {
+      if (el.autoConnect.checked) connect();
+    }, 500);
   </script>
 </body>
 </html>
