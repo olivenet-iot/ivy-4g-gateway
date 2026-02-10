@@ -760,8 +760,32 @@ describe('Polling Manager', () => {
 
       // Should be removed after resolution
       expect(pm.resolveDlmsInvokeId('meter1', 1)).toBeNull();
-      // Map for meter should also be cleaned up
-      expect(pm.pendingDlmsRequests.has('meter1')).toBe(false);
+      // Meter entry should still exist (empty Map) so that pollDlmsMeter's local
+      // reference remains reachable for subsequent invokeIds added during the loop
+      expect(pm.pendingDlmsRequests.has('meter1')).toBe(true);
+      expect(pm.pendingDlmsRequests.get('meter1').size).toBe(0);
+    });
+
+    it('should not cause race condition when resolving first invokeId while loop adds more', () => {
+      // Regression test for Bug #1: pollDlmsMeter sends GET.requests in a loop
+      // with delays. If the response for invokeId=1 arrives and is resolved before
+      // invokeId=2 is stored, the meter entry must not be deleted from the outer Map.
+      const pm = new PollingManager({ tcpServer: mockTCPServer });
+      const info1 = { obisCode: '1-0:15.8.0.255', name: 'Energy', classId: 3, sentAt: Date.now() };
+      pm.pendingDlmsRequests.set('meter1', new Map([[1, info1]]));
+      const meterPending = pm.pendingDlmsRequests.get('meter1');
+
+      // Simulate response for invokeId=1 arriving before invokeId=2 is stored
+      const resolved = pm.resolveDlmsInvokeId('meter1', 1);
+      expect(resolved).toEqual(info1);
+
+      // Simulate loop adding invokeId=2 to the local reference
+      const info2 = { obisCode: '1-0:12.7.0.255', name: 'Voltage', classId: 3, sentAt: Date.now() };
+      meterPending.set(2, info2);
+
+      // invokeId=2 must be resolvable through the outer Map
+      const resolved2 = pm.resolveDlmsInvokeId('meter1', 2);
+      expect(resolved2).toEqual(info2);
     });
 
     it('should keep other pending requests when resolving one', () => {
