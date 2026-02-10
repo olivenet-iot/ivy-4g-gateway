@@ -297,7 +297,7 @@ export class CommandHandler extends EventEmitter {
     const commandId = command.id;
 
     // Check if meter is connected
-    if (!this.tcpServer.isMeterConnected(meterId)) {
+    if (!this.tcpServer.connectionManager?.getConnectionByMeter(meterId)) {
       await this.sendErrorResponse(meterId, commandId, 'Meter not connected');
       this.stats.commandsFailed++;
       this.emit(COMMAND_EVENTS.COMMAND_FAILED, {
@@ -528,7 +528,7 @@ export class CommandHandler extends EventEmitter {
    */
   async executeReadRelayState(meterId) {
     const connection = this.tcpServer.connectionManager?.getConnectionByMeter(meterId);
-    if (!connection || connection.protocolType !== PROTOCOL_TYPES.IVY_DLMS) {
+    if (connection?.protocolType !== PROTOCOL_TYPES.IVY_DLMS) {
       throw new Error('read_relay_state is only supported for DLMS meters');
     }
 
@@ -771,7 +771,7 @@ export class CommandHandler extends EventEmitter {
     }
 
     // Check if meter is connected
-    if (!this.tcpServer.isMeterConnected(meterId)) {
+    if (!this.tcpServer.connectionManager?.getConnectionByMeter(meterId)) {
       throw new Error('Meter not connected');
     }
 

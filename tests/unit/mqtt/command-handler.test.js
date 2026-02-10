@@ -60,6 +60,9 @@ const createMockBroker = () => {
  */
 const createMockTCPServer = () => ({
   isMeterConnected: vi.fn(() => true),
+  connectionManager: {
+    getConnectionByMeter: vi.fn(() => ({ id: 'conn-1', protocolType: 'dlt645' })),
+  },
   sendCommand: vi.fn(() =>
     Promise.resolve({
       value: 123.45,
@@ -955,7 +958,7 @@ describe('Command Handler', () => {
     });
 
     it('should throw when meter not connected', async () => {
-      mockTCPServer.isMeterConnected.mockReturnValue(false);
+      mockTCPServer.connectionManager.getConnectionByMeter.mockReturnValue(null);
 
       await expect(
         handler.execute('000000001234', 'read_register', {
@@ -975,7 +978,7 @@ describe('Command Handler', () => {
         publisher: mockPublisher,
       });
       handler.start();
-      mockTCPServer.isMeterConnected.mockReturnValue(false);
+      mockTCPServer.connectionManager.getConnectionByMeter.mockReturnValue(null);
     });
 
     afterEach(() => {
@@ -1300,7 +1303,7 @@ describe('Command Handler', () => {
       mockConnectionManager.getConnectionByMeter.mockReturnValue(null);
 
       await expect(handler.execute('000000001234', 'read_relay_state'))
-        .rejects.toThrow('only supported for DLMS meters');
+        .rejects.toThrow('Meter not connected');
     });
 
     it('should execute read_relay_state for DLMS meters', async () => {
