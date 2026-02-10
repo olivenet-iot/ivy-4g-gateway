@@ -95,7 +95,20 @@ export const OBIS_REGISTRY = {
   '0-0:96.7.20.255': { name: 'Number of voltage swells L1', unit: '', category: 'events', key: 'VOLTAGE_SWELL_L1_COUNT' },
 
   // Relay / disconnect control
-  '0-0:96.3.10.255': { name: 'Disconnect control state', unit: '', category: 'control', key: 'DISCONNECT_STATE' },
+  '0-0:96.3.10.255': {
+    name: 'Disconnect control state',
+    unit: '', category: 'control', key: 'DISCONNECT_STATE',
+    classId: 70,
+    attributes: {
+      2: { name: 'output_state', type: 'boolean' },
+      3: { name: 'control_state', type: 'enum', values: { 0: 'disconnected', 1: 'connected', 2: 'ready_for_reconnection' } },
+      4: { name: 'control_mode', type: 'enum' },
+    },
+    methods: {
+      1: { name: 'remote_disconnect' },
+      2: { name: 'remote_reconnect' },
+    },
+  },
 
   // Tariff
   '0-0:96.14.0.255': { name: 'Current tariff', unit: '', category: 'system', key: 'CURRENT_TARIFF' },

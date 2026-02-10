@@ -1124,4 +1124,321 @@ describe('Command Handler', () => {
       expect(handler).toBeInstanceOf(CommandHandler);
     });
   });
+
+  describe('COMMAND_METHODS (new)', () => {
+    it('should define READ_RELAY_STATE method', () => {
+      expect(COMMAND_METHODS.READ_RELAY_STATE).toBe('read_relay_state');
+    });
+  });
+
+  describe('constructor (pollingManager)', () => {
+    it('should accept optional pollingManager', () => {
+      const mockPollingManager = { acquireDlmsLock: vi.fn() };
+      const handler = new CommandHandler({
+        broker: mockBroker,
+        tcpServer: mockTCPServer,
+        pollingManager: mockPollingManager,
+      });
+      expect(handler.pollingManager).toBe(mockPollingManager);
+    });
+
+    it('should default pollingManager to null', () => {
+      const handler = new CommandHandler({
+        broker: mockBroker,
+        tcpServer: mockTCPServer,
+      });
+      expect(handler.pollingManager).toBeNull();
+    });
+  });
+
+  describe('validateCommand (read_relay_state)', () => {
+    it('should accept read_relay_state without params', () => {
+      const handler = new CommandHandler({
+        broker: mockBroker,
+        tcpServer: mockTCPServer,
+      });
+      const result = handler.validateCommand({
+        id: 'cmd_1',
+        method: 'read_relay_state',
+      });
+      expect(result.valid).toBe(true);
+    });
+  });
+
+  describe('DLMS relay control (protocol branching)', () => {
+    let handler;
+    let mockConnectionManager;
+
+    beforeEach(() => {
+      mockConnectionManager = {
+        getConnectionByMeter: vi.fn(),
+        on: vi.fn(),
+        removeListener: vi.fn(),
+      };
+      mockTCPServer.connectionManager = mockConnectionManager;
+      mockTCPServer.sendCommandNoWait = vi.fn(() => Promise.resolve(true));
+
+      handler = new CommandHandler({
+        broker: mockBroker,
+        tcpServer: mockTCPServer,
+        publisher: mockPublisher,
+      });
+      handler.start();
+    });
+
+    afterEach(() => {
+      handler.stop();
+    });
+
+    it('should use DLT645 path when protocolType is not IVY_DLMS', async () => {
+      // No protocolType set → DLT645 path
+      mockConnectionManager.getConnectionByMeter.mockReturnValue({ protocolType: 'dlt645' });
+
+      const packet = {
+        topic: 'ivy/v1/meters/000000001234/command/request',
+        payload: Buffer.from(JSON.stringify({
+          id: 'cmd_1',
+          method: 'relay_control',
+          params: { state: 'open' },
+        })),
+      };
+
+      await handler.handleCommandMessage(packet);
+
+      // Should use buildSimpleRelayFrame (DLT645 path)
+      const { buildSimpleRelayFrame } = await import('../../../src/protocol/frame-builder.js');
+      expect(buildSimpleRelayFrame).toHaveBeenCalledWith('000000001234', 'trip');
+    });
+
+    it('should use DLMS path when protocolType is IVY_DLMS', async () => {
+      mockConnectionManager.getConnectionByMeter.mockReturnValue({ protocolType: 'ivy_dlms' });
+
+      // Simulate AARE response
+      mockConnectionManager.on.mockImplementation((event, listener) => {
+        if (event === 'dlms:received') {
+          setTimeout(() => {
+            listener({
+              meterId: '000000001234',
+              parsedApdu: { type: 'aare', accepted: true },
+            });
+          }, 10);
+          setTimeout(() => {
+            listener({
+              meterId: '000000001234',
+              parsedApdu: { type: 'action-response', success: true, actionResult: 0, actionResultName: 'success' },
+            });
+          }, 20);
+          setTimeout(() => {
+            listener({
+              meterId: '000000001234',
+              parsedApdu: { type: 'get-response', accessResult: 'success', data: { value: false } },
+            });
+          }, 1030);
+        }
+      });
+
+      const result = await handler.execute('000000001234', 'relay_control', { state: 'open' });
+
+      expect(result.protocol).toBe('dlms');
+      expect(result.relay_state).toBe('open');
+      expect(mockTCPServer.sendCommandNoWait).toHaveBeenCalled();
+    });
+
+    it('should fail DLMS relay control on association failure', async () => {
+      mockConnectionManager.getConnectionByMeter.mockReturnValue({ protocolType: 'ivy_dlms' });
+
+      // Simulate failed AARE
+      mockConnectionManager.on.mockImplementation((event, listener) => {
+        if (event === 'dlms:received') {
+          setTimeout(() => {
+            listener({
+              meterId: '000000001234',
+              parsedApdu: { type: 'aare', accepted: false },
+            });
+          }, 10);
+        }
+      });
+
+      await expect(handler.execute('000000001234', 'relay_control', { state: 'open' }))
+        .rejects.toThrow('DLMS association failed');
+    });
+  });
+
+  describe('read_relay_state command', () => {
+    let handler;
+    let mockConnectionManager;
+
+    beforeEach(() => {
+      mockConnectionManager = {
+        getConnectionByMeter: vi.fn(),
+        on: vi.fn(),
+        removeListener: vi.fn(),
+      };
+      mockTCPServer.connectionManager = mockConnectionManager;
+      mockTCPServer.sendCommandNoWait = vi.fn(() => Promise.resolve(true));
+
+      handler = new CommandHandler({
+        broker: mockBroker,
+        tcpServer: mockTCPServer,
+        publisher: mockPublisher,
+      });
+      handler.start();
+    });
+
+    afterEach(() => {
+      handler.stop();
+    });
+
+    it('should reject read_relay_state for non-DLMS meters', async () => {
+      mockConnectionManager.getConnectionByMeter.mockReturnValue({ protocolType: 'dlt645' });
+
+      await expect(handler.execute('000000001234', 'read_relay_state'))
+        .rejects.toThrow('only supported for DLMS meters');
+    });
+
+    it('should reject read_relay_state when no connection exists', async () => {
+      mockConnectionManager.getConnectionByMeter.mockReturnValue(null);
+
+      await expect(handler.execute('000000001234', 'read_relay_state'))
+        .rejects.toThrow('only supported for DLMS meters');
+    });
+
+    it('should execute read_relay_state for DLMS meters', async () => {
+      mockConnectionManager.getConnectionByMeter.mockReturnValue({ protocolType: 'ivy_dlms' });
+
+      // Track all listeners registered and emit events to each
+      const listeners = [];
+      mockConnectionManager.on.mockImplementation((event, listener) => {
+        if (event === 'dlms:received') {
+          listeners.push(listener);
+          // Emit AARE on first listener registration
+          if (listeners.length === 1) {
+            setTimeout(() => {
+              listeners.forEach(l => l({
+                meterId: '000000001234',
+                parsedApdu: { type: 'aare', accepted: true },
+              }));
+            }, 10);
+          }
+          // Emit first GET.response on second registration
+          if (listeners.length === 2) {
+            setTimeout(() => {
+              listeners.forEach(l => l({
+                meterId: '000000001234',
+                parsedApdu: { type: 'get-response', accessResult: 'success', data: { value: true } },
+              }));
+            }, 10);
+          }
+          // Emit second GET.response on third registration
+          if (listeners.length === 3) {
+            setTimeout(() => {
+              listeners.forEach(l => l({
+                meterId: '000000001234',
+                parsedApdu: { type: 'get-response', accessResult: 'success', data: { value: 1 } },
+              }));
+            }, 10);
+          }
+        }
+      });
+
+      const result = await handler.execute('000000001234', 'read_relay_state');
+
+      expect(result.protocol).toBe('dlms');
+      expect(result.output_state).toBe(true);
+      expect(result.control_state).toBe(1);
+    });
+  });
+
+  describe('waitForDlmsResponse', () => {
+    let handler;
+    let mockConnectionManager;
+
+    beforeEach(() => {
+      mockConnectionManager = {
+        getConnectionByMeter: vi.fn(),
+        on: vi.fn(),
+        removeListener: vi.fn(),
+      };
+      mockTCPServer.connectionManager = mockConnectionManager;
+
+      handler = new CommandHandler({
+        broker: mockBroker,
+        tcpServer: mockTCPServer,
+      });
+    });
+
+    it('should return null when connectionManager is not available', async () => {
+      mockTCPServer.connectionManager = null;
+
+      const result = await handler.waitForDlmsResponse('meter1', 'aare', 100);
+      expect(result).toBeNull();
+    });
+
+    it('should return null on timeout', async () => {
+      // Don't emit any events
+      const result = await handler.waitForDlmsResponse('meter1', 'aare', 50);
+      expect(result).toBeNull();
+    });
+
+    it('should resolve when matching response arrives', async () => {
+      mockConnectionManager.on.mockImplementation((event, listener) => {
+        setTimeout(() => {
+          listener({
+            meterId: 'meter1',
+            parsedApdu: { type: 'aare', accepted: true },
+          });
+        }, 10);
+      });
+
+      const result = await handler.waitForDlmsResponse('meter1', 'aare', 1000);
+      expect(result).toEqual({ type: 'aare', accepted: true });
+    });
+
+    it('should ignore responses for different meters', async () => {
+      mockConnectionManager.on.mockImplementation((event, listener) => {
+        setTimeout(() => {
+          listener({
+            meterId: 'meter2',
+            parsedApdu: { type: 'aare', accepted: true },
+          });
+        }, 10);
+      });
+
+      const result = await handler.waitForDlmsResponse('meter1', 'aare', 50);
+      expect(result).toBeNull();
+    });
+
+    it('should ignore responses of different type', async () => {
+      mockConnectionManager.on.mockImplementation((event, listener) => {
+        setTimeout(() => {
+          listener({
+            meterId: 'meter1',
+            parsedApdu: { type: 'get-response', data: {} },
+          });
+        }, 10);
+      });
+
+      const result = await handler.waitForDlmsResponse('meter1', 'aare', 50);
+      expect(result).toBeNull();
+    });
+
+    it('should clean up listener after resolving', async () => {
+      mockConnectionManager.on.mockImplementation((event, listener) => {
+        setTimeout(() => {
+          listener({
+            meterId: 'meter1',
+            parsedApdu: { type: 'aare', accepted: true },
+          });
+        }, 10);
+      });
+
+      await handler.waitForDlmsResponse('meter1', 'aare', 1000);
+      expect(mockConnectionManager.removeListener).toHaveBeenCalledWith('dlms:received', expect.any(Function));
+    });
+
+    it('should clean up listener on timeout', async () => {
+      await handler.waitForDlmsResponse('meter1', 'aare', 50);
+      expect(mockConnectionManager.removeListener).toHaveBeenCalledWith('dlms:received', expect.any(Function));
+    });
+  });
 });

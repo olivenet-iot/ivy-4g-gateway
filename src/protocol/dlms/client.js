@@ -111,6 +111,30 @@ export const buildGetRequest = (classId, obisCode, attributeIndex = 2, invokeId 
 };
 
 /**
+ * Build an ACTION.request-normal APDU
+ *
+ * @param {number} classId - COSEM class ID (e.g., 70=Disconnect control)
+ * @param {string} obisCode - OBIS code in "A-B:C.D.E.F" format
+ * @param {number} methodId - Method index (e.g., 1=remote_disconnect, 2=remote_reconnect)
+ * @param {number} [invokeId=1] - Invoke ID for request/response matching
+ * @returns {Buffer} ACTION.request APDU bytes (13 bytes)
+ */
+export const buildActionRequest = (classId, obisCode, methodId, invokeId = 1) => {
+  const obisBytes = obisToBytes(obisCode);
+
+  return Buffer.from([
+    0xC3, // ACTION.request tag
+    0x01, // action-request-normal
+    invokeId & 0xFF, // invoke-id-and-priority
+    // cosem-method-descriptor:
+    (classId >> 8) & 0xFF, classId & 0xFF, // class-id (uint16)
+    ...obisBytes, // instance-id (6 bytes)
+    methodId, // method-id (int8)
+    0x00, // method-invocation-parameters: not present
+  ]);
+};
+
+/**
  * Build a Release Request (RLRQ) APDU
  *
  * @param {number} [reason=0] - Release reason (0=normal)
@@ -175,6 +199,7 @@ export default {
   APPLICATION_CONTEXT,
   buildAarq,
   buildGetRequest,
+  buildActionRequest,
   buildReleaseRequest,
   wrapDlmsForSending,
   prepareDlmsForSending,

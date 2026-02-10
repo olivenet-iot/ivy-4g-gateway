@@ -810,6 +810,93 @@ describe('Polling Manager', () => {
     });
   });
 
+  describe('acquireDlmsLock', () => {
+    it('should acquire and release a lock', async () => {
+      const pm = new PollingManager({ tcpServer: mockTCPServer });
+
+      const release = await pm.acquireDlmsLock('meter1');
+      expect(pm.dlmsAssociationLocks.has('meter1')).toBe(true);
+
+      release();
+      expect(pm.dlmsAssociationLocks.has('meter1')).toBe(false);
+    });
+
+    it('should serialize concurrent lock requests', async () => {
+      vi.useRealTimers();
+      const pm = new PollingManager({ tcpServer: mockTCPServer });
+
+      const order = [];
+
+      // First lock holder
+      const release1 = await pm.acquireDlmsLock('meter1');
+      order.push('acquired-1');
+
+      // Second lock request (should wait)
+      const lock2Promise = pm.acquireDlmsLock('meter1', 5000).then((release) => {
+        order.push('acquired-2');
+        return release;
+      });
+
+      // Give lock2Promise a tick to start waiting
+      await new Promise(r => setTimeout(r, 50));
+
+      // Release first lock
+      release1();
+      order.push('released-1');
+
+      // Wait for second lock to be acquired
+      const release2 = await lock2Promise;
+      release2();
+      order.push('released-2');
+
+      expect(order).toEqual(['acquired-1', 'released-1', 'acquired-2', 'released-2']);
+      vi.useFakeTimers();
+    });
+
+    it('should throw on timeout waiting for lock', async () => {
+      vi.useRealTimers();
+      const pm = new PollingManager({ tcpServer: mockTCPServer });
+
+      // Hold a lock
+      await pm.acquireDlmsLock('meter1');
+
+      // Try to acquire with very short timeout
+      await expect(pm.acquireDlmsLock('meter1', 50)).rejects.toThrow('DLMS lock timeout');
+      vi.useFakeTimers();
+    });
+
+    it('should allow locks for different meters concurrently', async () => {
+      const pm = new PollingManager({ tcpServer: mockTCPServer });
+
+      const release1 = await pm.acquireDlmsLock('meter1');
+      const release2 = await pm.acquireDlmsLock('meter2');
+
+      expect(pm.dlmsAssociationLocks.has('meter1')).toBe(true);
+      expect(pm.dlmsAssociationLocks.has('meter2')).toBe(true);
+
+      release1();
+      release2();
+    });
+
+    it('should release all locks on stop', async () => {
+      const pm = new PollingManager({ tcpServer: mockTCPServer });
+      pm.isRunning = true;
+
+      await pm.acquireDlmsLock('meter1');
+      await pm.acquireDlmsLock('meter2');
+
+      pm.stop();
+
+      expect(pm.dlmsAssociationLocks.size).toBe(0);
+    });
+
+    it('should initialize dlmsAssociationLocks as empty Map', () => {
+      const pm = new PollingManager({ tcpServer: mockTCPServer });
+      expect(pm.dlmsAssociationLocks).toBeInstanceOf(Map);
+      expect(pm.dlmsAssociationLocks.size).toBe(0);
+    });
+  });
+
   describe('createPollingManager', () => {
     it('should create PollingManager instance', () => {
       const pm = createPollingManager({ tcpServer: mockTCPServer });

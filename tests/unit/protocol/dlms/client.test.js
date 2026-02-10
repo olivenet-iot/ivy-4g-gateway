@@ -6,6 +6,7 @@ import { describe, it, expect } from 'vitest';
 import {
   buildAarq,
   buildGetRequest,
+  buildActionRequest,
   buildReleaseRequest,
   wrapDlmsForSending,
   prepareDlmsForSending,
@@ -50,6 +51,65 @@ describe('DLMS Client', () => {
       expect(req[8]).toBe(8);
       expect(req[9]).toBe(0);
       expect(req[10]).toBe(255);
+    });
+  });
+
+  describe('buildActionRequest', () => {
+    it('should build an ACTION.request starting with tag 0xC3', () => {
+      const req = buildActionRequest(70, '0-0:96.3.10.255', 1);
+      expect(req[0]).toBe(0xC3);
+      expect(req[1]).toBe(0x01); // action-request-normal
+    });
+
+    it('should be exactly 13 bytes', () => {
+      const req = buildActionRequest(70, '0-0:96.3.10.255', 1);
+      expect(req.length).toBe(13);
+    });
+
+    it('should encode class ID 70 as 0x0046', () => {
+      const req = buildActionRequest(70, '0-0:96.3.10.255', 1);
+      expect(req[3]).toBe(0x00);
+      expect(req[4]).toBe(0x46);
+    });
+
+    it('should encode OBIS 0-0:96.3.10.255 correctly', () => {
+      const req = buildActionRequest(70, '0-0:96.3.10.255', 1);
+      expect(req[5]).toBe(0);
+      expect(req[6]).toBe(0);
+      expect(req[7]).toBe(96);
+      expect(req[8]).toBe(3);
+      expect(req[9]).toBe(10);
+      expect(req[10]).toBe(255);
+    });
+
+    it('should set method ID 1 for disconnect', () => {
+      const req = buildActionRequest(70, '0-0:96.3.10.255', 1);
+      expect(req[11]).toBe(1);
+    });
+
+    it('should set method ID 2 for reconnect', () => {
+      const req = buildActionRequest(70, '0-0:96.3.10.255', 2);
+      expect(req[11]).toBe(2);
+    });
+
+    it('should set no method-invocation-parameters (0x00)', () => {
+      const req = buildActionRequest(70, '0-0:96.3.10.255', 1);
+      expect(req[12]).toBe(0x00);
+    });
+
+    it('should use custom invokeId', () => {
+      const req = buildActionRequest(70, '0-0:96.3.10.255', 1, 3);
+      expect(req[2]).toBe(3);
+    });
+
+    it('should default invokeId to 1', () => {
+      const req = buildActionRequest(70, '0-0:96.3.10.255', 1);
+      expect(req[2]).toBe(1);
+    });
+
+    it('should produce expected hex for disconnect with invokeId=3', () => {
+      const req = buildActionRequest(70, '0-0:96.3.10.255', 1, 3);
+      expect(req.toString('hex')).toBe('c301030046000060030aff0100');
     });
   });
 

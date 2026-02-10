@@ -94,17 +94,20 @@ const main = async () => {
     });
     logger.info('Telemetry Publisher started');
 
+    // Create Polling Manager (before Command Handler so it can be injected)
+    pollingManager = createPollingManager({ tcpServer });
+
     // Create and start Command Handler
     commandHandler = createCommandHandler({
       broker: mqttBroker,
       tcpServer,
       publisher: telemetryPublisher,
+      pollingManager,
     });
     commandHandler.start();
     logger.info('Command Handler started');
 
-    // Create and start Polling Manager
-    pollingManager = createPollingManager({ tcpServer });
+    // Start Polling Manager
     pollingManager.start();
     logger.info('Polling Manager started', {
       interval: config.polling.interval,

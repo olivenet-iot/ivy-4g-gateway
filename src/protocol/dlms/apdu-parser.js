@@ -29,6 +29,7 @@ export const APDU_TAGS = {
   GET_REQUEST: 0xC0,
   GET_RESPONSE: 0xC4,
   SET_RESPONSE: 0xC5,
+  ACTION_REQUEST: 0xC3,
   ACTION_RESPONSE: 0xC7,
   AARQ: 0x60,
   AARE: 0x61,
@@ -46,6 +47,7 @@ const APDU_TAG_NAMES = {
   [APDU_TAGS.GET_REQUEST]: 'GET.request',
   [APDU_TAGS.GET_RESPONSE]: 'GET.response',
   [APDU_TAGS.SET_RESPONSE]: 'SET.response',
+  [APDU_TAGS.ACTION_REQUEST]: 'ACTION.request',
   [APDU_TAGS.ACTION_RESPONSE]: 'ACTION.response',
   [APDU_TAGS.AARQ]: 'AARQ',
   [APDU_TAGS.AARE]: 'AARE',
@@ -72,6 +74,25 @@ export const DATA_ACCESS_RESULT_NAMES = {
   11: 'no-long-get-in-progress',
   12: 'long-set-aborted',
   13: 'no-long-set-in-progress',
+};
+
+/**
+ * DLMS action-result values (IEC 62056-5-3)
+ */
+export const ACTION_RESULT_NAMES = {
+  0: 'success',
+  1: 'hardware-fault',
+  2: 'temporary-failure',
+  3: 'read-write-denied',
+  4: 'object-undefined',
+  5: 'object-class-inconsistent',
+  6: 'object-unavailable',
+  7: 'type-unmatched',
+  8: 'scope-of-access-violated',
+  9: 'data-block-unavailable',
+  10: 'long-action-aborted',
+  11: 'no-long-action-in-progress',
+  250: 'other-reason',
 };
 
 /**
@@ -112,6 +133,12 @@ export const parseApdu = (buffer) => {
 
     case APDU_TAGS.GET_REQUEST:
       return { type: 'get-request', tag, tagName, raw: buffer };
+
+    case APDU_TAGS.ACTION_REQUEST:
+      return { type: 'action-request', tag, tagName, raw: buffer };
+
+    case APDU_TAGS.ACTION_RESPONSE:
+      return parseActionResponse(buffer);
 
     case APDU_TAGS.EXCEPTION_RESPONSE:
       return parseExceptionResponse(buffer);
@@ -447,6 +474,75 @@ export const parseExceptionResponse = (buffer) => {
 };
 
 /**
+ * Parse ACTION.response APDU (tag 0xC7)
+ *
+ * Structure:
+ *   [0xC7] [response-type: 1 byte] [invoke-id: 1 byte] [action-result: 1 byte]
+ *   Optional: [return-data-present: 1 byte] [data...]
+ *
+ * @param {Buffer} buffer - APDU starting with 0xC7
+ * @returns {Object} Parsed ACTION response
+ */
+export const parseActionResponse = (buffer) => {
+  const result = {
+    type: 'action-response',
+    tag: APDU_TAGS.ACTION_RESPONSE,
+    tagName: 'ACTION.response',
+    responseType: null,
+    invokeId: null,
+    actionResult: null,
+    actionResultName: null,
+    success: false,
+    data: null,
+    raw: buffer,
+  };
+
+  try {
+    let pos = 1; // skip tag
+
+    // Response type
+    if (buffer.length > pos) {
+      result.responseType = buffer[pos];
+      pos += 1;
+    }
+
+    // Invoke ID and priority
+    if (buffer.length > pos) {
+      result.invokeId = buffer[pos];
+      pos += 1;
+    }
+
+    // Action result
+    if (buffer.length > pos) {
+      result.actionResult = buffer[pos];
+      result.actionResultName = ACTION_RESULT_NAMES[result.actionResult] || `unknown(${result.actionResult})`;
+      result.success = result.actionResult === 0;
+      pos += 1;
+    }
+
+    // Optional return data (only present if action-result == 0 and data follows)
+    if (result.success && buffer.length > pos) {
+      const returnDataPresent = buffer[pos];
+      pos += 1;
+
+      if (returnDataPresent !== 0x00 && buffer.length > pos) {
+        try {
+          result.data = parseDlmsValue(buffer, pos);
+        } catch (err) {
+          logger.debug('Failed to parse ACTION.response return data', { error: err.message });
+          result.data = { raw: buffer.subarray(pos) };
+        }
+      }
+    }
+  } catch (err) {
+    logger.warn('ACTION.response parse error', { error: err.message });
+    result.parseError = err.message;
+  }
+
+  return result;
+};
+
+/**
  * Extract telemetry-relevant data from a parsed APDU
  * Converts DLMS data into the format expected by the gateway publisher
  *
@@ -531,11 +627,13 @@ const extractDataNotificationTelemetry = (parsed) => {
 export default {
   APDU_TAGS,
   DATA_ACCESS_RESULT_NAMES,
+  ACTION_RESULT_NAMES,
   parseApdu,
   parseEventNotification,
   parseDataNotification,
   parseGetResponse,
   parseAare,
+  parseActionResponse,
   parseExceptionResponse,
   extractTelemetry,
 };

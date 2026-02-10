@@ -172,6 +172,9 @@ export class PollingManager extends EventEmitter {
     /** @type {Map<string, Map<number, Object>>} meterId → Map<invokeId, {obisCode, name, classId, sentAt}> */
     this.pendingDlmsRequests = new Map();
 
+    /** @type {Map<string, {promise: Promise, resolve: Function}>} Per-meter DLMS association locks */
+    this.dlmsAssociationLocks = new Map();
+
     logger.info('PollingManager created', { options: this.options });
   }
 
@@ -212,6 +215,12 @@ export class PollingManager extends EventEmitter {
       clearTimeout(this.pollTimer);
       this.pollTimer = null;
     }
+
+    // Release all DLMS locks
+    for (const [, lock] of this.dlmsAssociationLocks) {
+      lock.resolve();
+    }
+    this.dlmsAssociationLocks.clear();
 
     logger.info('PollingManager stopped');
   }
@@ -591,6 +600,56 @@ export class PollingManager extends EventEmitter {
     // Map that resolveDlmsInvokeId can no longer find. The 30s timeout in
     // pollDlmsMeter() handles stale entry cleanup instead.
     return info;
+  }
+
+  /**
+   * Acquire a per-meter DLMS association lock.
+   * Ensures only one DLMS association sequence runs at a time per meter.
+   *
+   * @param {string} meterId - Meter address
+   * @param {number} [timeout=30000] - Maximum time to wait for lock (ms)
+   * @returns {Promise<Function>} Release function to call when done
+   * @throws {Error} If timeout expires waiting for lock
+   */
+  async acquireDlmsLock(meterId, timeout = 30000) {
+    const startTime = Date.now();
+
+    while (this.dlmsAssociationLocks.has(meterId)) {
+      const elapsed = Date.now() - startTime;
+      if (elapsed >= timeout) {
+        throw new Error(`DLMS lock timeout for meter ${meterId} after ${timeout}ms`);
+      }
+
+      const lock = this.dlmsAssociationLocks.get(meterId);
+      if (lock) {
+        // Wait for existing lock to be released, with remaining timeout
+        const remaining = timeout - elapsed;
+        await Promise.race([
+          lock.promise,
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error(`DLMS lock timeout for meter ${meterId} after ${timeout}ms`)), remaining)
+          ),
+        ]);
+      }
+    }
+
+    // Create new lock
+    let lockResolve;
+    const lockPromise = new Promise((resolve) => {
+      lockResolve = resolve;
+    });
+
+    this.dlmsAssociationLocks.set(meterId, { promise: lockPromise, resolve: lockResolve });
+
+    const release = () => {
+      const lock = this.dlmsAssociationLocks.get(meterId);
+      if (lock && lock.resolve === lockResolve) {
+        this.dlmsAssociationLocks.delete(meterId);
+        lockResolve();
+      }
+    };
+
+    return release;
   }
 
   /**

@@ -7,6 +7,7 @@ import {
   IVY_HEADER_LENGTH,
   IVY_VERSION,
   IVY_DESTINATIONS,
+  RAW_DLMS_TAGS,
   isIvyPacket,
   parseIvyHeader,
   buildIvyHeader,
@@ -489,6 +490,70 @@ describe('IVY Wrapper Parser', () => {
 
     it('should return -1 for empty buffer', () => {
       expect(computeRawDlmsLength(Buffer.alloc(0))).toBe(-1);
+    });
+
+    it('should return 13 for complete ACTION.request (0xC3)', () => {
+      const buf = Buffer.from([
+        0xC3, 0x01, 0x01,             // tag + type + invokeId
+        0x00, 0x46,                     // classId = 70
+        0x00, 0x00, 0x60, 0x03, 0x0a, 0xff, // OBIS 0-0:96.3.10.255
+        0x01,                           // methodId
+        0x00,                           // no params
+      ]);
+      expect(computeRawDlmsLength(buf)).toBe(13);
+    });
+
+    it('should return -1 for incomplete ACTION.request', () => {
+      expect(computeRawDlmsLength(Buffer.from([0xC3, 0x01, 0x01]))).toBe(-1);
+    });
+
+    it('should compute ACTION.response length with return data', () => {
+      // ACTION.response: tag + responseType + invokeId + result(0=success) + returnDataPresent(1) + boolean(true)
+      const buf = Buffer.from([0xC7, 0x01, 0x01, 0x00, 0x01, 0x03, 0x01]);
+      expect(computeRawDlmsLength(buf)).toBe(7);
+    });
+
+    it('should compute ACTION.response length without return data', () => {
+      // ACTION.response: tag + responseType + invokeId + result(0=success) + returnDataPresent(0)
+      const buf = Buffer.from([0xC7, 0x01, 0x01, 0x00, 0x00]);
+      expect(computeRawDlmsLength(buf)).toBe(5);
+    });
+
+    it('should compute ACTION.response length for error result', () => {
+      // ACTION.response: tag + responseType + invokeId + result(3=read-write-denied)
+      const buf = Buffer.from([0xC7, 0x01, 0x01, 0x03]);
+      expect(computeRawDlmsLength(buf)).toBe(4);
+    });
+  });
+
+  describe('RAW_DLMS_TAGS', () => {
+    it('should include ACTION.request tag 0xC3', () => {
+      expect(RAW_DLMS_TAGS.has(0xC3)).toBe(true);
+    });
+
+    it('should include ACTION.response tag 0xC7', () => {
+      expect(RAW_DLMS_TAGS.has(0xC7)).toBe(true);
+    });
+  });
+
+  describe('ACTION.request in stream parser', () => {
+    it('should recognize ACTION.request (0xC3) as raw DLMS APDU', () => {
+      const onPacket = vi.fn();
+      const parser = createIvyStreamParser(onPacket);
+
+      const actionReq = Buffer.from([
+        0xC3, 0x01, 0x01,
+        0x00, 0x46,
+        0x00, 0x00, 0x60, 0x03, 0x0a, 0xff,
+        0x01,
+        0x00,
+      ]);
+      parser.push(actionReq);
+
+      expect(onPacket).toHaveBeenCalledOnce();
+      const [header, payload] = onPacket.mock.calls[0];
+      expect(header.isRawDlms).toBe(true);
+      expect(payload).toEqual(actionReq);
     });
   });
 

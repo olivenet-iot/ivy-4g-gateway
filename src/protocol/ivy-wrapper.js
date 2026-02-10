@@ -47,6 +47,7 @@ export const RAW_DLMS_TAGS = new Set([
   0x0F, // DataNotification
   0xC4, // GET.response
   0xC5, // SET.response
+  0xC3, // ACTION.request
   0xC7, // ACTION.response
   0x61, // AARE (Association Response)
   0x63, // RLRE (Release Response)
@@ -315,10 +316,23 @@ const computeResponseLength = (buffer) => {
       if (pos >= buffer.length) return -1;
       pos += 1;
       break;
-    case 0xC7: // ACTION.response-normal: result byte
+    case 0xC7: { // ACTION.response-normal: action-result byte + optional return-data
       if (pos >= buffer.length) return -1;
+      const actionResult = buffer[pos];
       pos += 1;
+      // If success (0), check for optional return-data
+      if (actionResult === 0 && pos < buffer.length) {
+        const returnDataPresent = buffer[pos];
+        pos += 1;
+        if (returnDataPresent !== 0x00 && pos < buffer.length) {
+          try {
+            const result = parseDlmsValue(buffer, pos);
+            pos += result.bytesConsumed;
+          } catch { return -1; }
+        }
+      }
       break;
+    }
     default:
       return -1;
   }
@@ -353,6 +367,8 @@ export const computeRawDlmsLength = (buffer) => {
     case 0xC7: // ACTION.response
       return computeResponseLength(buffer);
     case 0xC0: // GET.request-normal: tag(1) + type(1) + invokeId(1) + classId(2) + OBIS(6) + attrId(1) + accessSelection(1) = 13
+      return buffer.length >= 13 ? 13 : -1;
+    case 0xC3: // ACTION.request-normal: tag(1) + type(1) + invokeId(1) + classId(2) + OBIS(6) + methodId(1) + noParams(1) = 13
       return buffer.length >= 13 ? 13 : -1;
     default:
       return -1;

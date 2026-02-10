@@ -6,11 +6,13 @@ import { describe, it, expect } from 'vitest';
 import {
   APDU_TAGS,
   DATA_ACCESS_RESULT_NAMES,
+  ACTION_RESULT_NAMES,
   parseApdu,
   parseEventNotification,
   parseDataNotification,
   parseGetResponse,
   parseAare,
+  parseActionResponse,
   parseExceptionResponse,
   extractTelemetry,
 } from '../../../../src/protocol/dlms/apdu-parser.js';
@@ -415,6 +417,96 @@ describe('DLMS APDU Parser', () => {
 
       expect(result.data.typeName).toBe('UINT32');
       expect(result.data.value).toBe(10000);
+    });
+  });
+
+  describe('ACTION_RESULT_NAMES', () => {
+    it('should define success as 0', () => {
+      expect(ACTION_RESULT_NAMES[0]).toBe('success');
+    });
+
+    it('should define read-write-denied as 3', () => {
+      expect(ACTION_RESULT_NAMES[3]).toBe('read-write-denied');
+    });
+
+    it('should define temporary-failure as 2', () => {
+      expect(ACTION_RESULT_NAMES[2]).toBe('temporary-failure');
+    });
+  });
+
+  describe('parseActionResponse', () => {
+    it('should parse successful ACTION.response', () => {
+      // c7 01 03 00 00 = tag, response-normal, invokeId=3, result=success, no return data
+      const buf = Buffer.from([0xC7, 0x01, 0x03, 0x00, 0x00]);
+      const result = parseActionResponse(buf);
+
+      expect(result.type).toBe('action-response');
+      expect(result.tag).toBe(0xC7);
+      expect(result.invokeId).toBe(3);
+      expect(result.actionResult).toBe(0);
+      expect(result.actionResultName).toBe('success');
+      expect(result.success).toBe(true);
+    });
+
+    it('should parse failed ACTION.response with read-write-denied', () => {
+      const buf = Buffer.from([0xC7, 0x01, 0x02, 0x03]);
+      const result = parseActionResponse(buf);
+
+      expect(result.type).toBe('action-response');
+      expect(result.invokeId).toBe(2);
+      expect(result.actionResult).toBe(3);
+      expect(result.actionResultName).toBe('read-write-denied');
+      expect(result.success).toBe(false);
+    });
+
+    it('should parse ACTION.response with optional return data', () => {
+      // c7 01 01 00 01 03 01 = tag, response-normal, invokeId=1, success, return-data-present=1, boolean true
+      const buf = Buffer.from([0xC7, 0x01, 0x01, 0x00, 0x01, 0x03, 0x01]);
+      const result = parseActionResponse(buf);
+
+      expect(result.success).toBe(true);
+      expect(result.invokeId).toBe(1);
+      expect(result.data).not.toBeNull();
+      expect(result.data.value).toBe(true);
+    });
+
+    it('should handle ACTION.response with no return data indicator', () => {
+      const buf = Buffer.from([0xC7, 0x01, 0x05, 0x00, 0x00]);
+      const result = parseActionResponse(buf);
+
+      expect(result.success).toBe(true);
+      expect(result.invokeId).toBe(5);
+      expect(result.data).toBeNull();
+    });
+
+    it('should handle unknown action result code', () => {
+      const buf = Buffer.from([0xC7, 0x01, 0x01, 0xFF]);
+      const result = parseActionResponse(buf);
+
+      expect(result.success).toBe(false);
+      expect(result.actionResultName).toBe('unknown(255)');
+    });
+  });
+
+  describe('parseApdu dispatches ACTION.response', () => {
+    it('should dispatch 0xC7 to parseActionResponse', () => {
+      const buf = Buffer.from([0xC7, 0x01, 0x01, 0x00, 0x00]);
+      const result = parseApdu(buf);
+
+      expect(result.type).toBe('action-response');
+      expect(result.success).toBe(true);
+    });
+
+    it('should dispatch 0xC3 as action-request', () => {
+      const buf = Buffer.from([0xC3, 0x01, 0x01, 0x00, 0x46, 0x00, 0x00, 0x60, 0x03, 0x0a, 0xff, 0x01, 0x00]);
+      const result = parseApdu(buf);
+
+      expect(result.type).toBe('action-request');
+      expect(result.tag).toBe(0xC3);
+    });
+
+    it('should define ACTION_REQUEST tag', () => {
+      expect(APDU_TAGS.ACTION_REQUEST).toBe(0xC3);
     });
   });
 });
