@@ -103,11 +103,14 @@ export class MQTTBroker extends EventEmitter {
     }
 
     return new Promise((resolve, reject) => {
-      // Create Aedes instance
+      // Create Aedes instance with production-safe limits
       this.aedes = new Aedes({
         id: 'ivy-gateway-broker',
         heartbeatInterval: 60000,
         connectTimeout: 30000,
+        concurrency: 100,         // Max concurrent message deliveries
+        queueLimit: 42,           // Default Aedes queue limit per client
+        maxClientsIdLength: 128,  // Max client ID length
       });
 
       // Setup authentication if provided
@@ -127,8 +130,9 @@ export class MQTTBroker extends EventEmitter {
       // Setup event handlers
       this.setupEventHandlers();
 
-      // Create TCP server
+      // Create TCP server with connection limit
       this.server = createServer(this.aedes.handle);
+      this.server.maxConnections = 2048; // Limit total MQTT TCP connections
 
       this.server.on('error', (error) => {
         logger.error('MQTT Server error', { error: error.message });

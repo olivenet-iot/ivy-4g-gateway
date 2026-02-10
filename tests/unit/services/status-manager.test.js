@@ -35,6 +35,7 @@ vi.mock('../../../src/tcp/server.js', () => ({
     METER_CONNECTED: 'meter:connected',
     METER_DISCONNECTED: 'meter:disconnected',
     TELEMETRY_RECEIVED: 'telemetry:received',
+    DLMS_TELEMETRY_RECEIVED: 'dlms:telemetry:received',
     SERVER_ERROR: 'server:error',
     ERROR_RESPONSE: 'error:response',
   },
@@ -48,6 +49,11 @@ const createMockTCPServer = () => {
   return {
     on: vi.fn((event, handler) => {
       handlers[event] = handler;
+    }),
+    removeListener: vi.fn((event, handler) => {
+      if (handlers[event] === handler) {
+        delete handlers[event];
+      }
     }),
     emit: vi.fn(),
     _handlers: handlers,

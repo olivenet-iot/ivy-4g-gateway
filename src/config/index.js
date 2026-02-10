@@ -42,12 +42,12 @@ export const config = {
     port: parseIntDefault(process.env.MQTT_PORT, 1883),
     wsPort: parseIntDefault(process.env.MQTT_WS_PORT, 9001),
     host: process.env.MQTT_HOST || '0.0.0.0',
-    // Client config (for connecting to external brokers)
-    brokerUrl: process.env.MQTT_BROKER_URL || 'mqtt://localhost:1883',
+    // External MQTT bridge config (for connecting to remote brokers)
+    brokerUrl: process.env.MQTT_BROKER_URL || '',  // Empty = bridge disabled
     username: process.env.MQTT_USERNAME || '',
     password: process.env.MQTT_PASSWORD || '',
     clientId: process.env.MQTT_CLIENT_ID || `ivy-gateway-${Date.now()}`,
-    topicPrefix: process.env.MQTT_TOPIC_PREFIX || 'metpow/4g',
+    topicPrefix: process.env.MQTT_TOPIC_PREFIX || 'ivy/v1',
     // Authentication config
     auth: {
       enabled: process.env.MQTT_AUTH_ENABLED === 'true', // false by default for dev

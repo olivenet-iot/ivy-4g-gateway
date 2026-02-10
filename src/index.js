@@ -14,6 +14,7 @@ import { createPollingManager } from './services/polling-manager.js';
 import { createStatusManager } from './services/status-manager.js';
 import { lookupObis } from './protocol/dlms/obis-registry.js';
 import { createHttpServer } from './http/server.js';
+import { createMQTTBridge } from './mqtt/bridge.js';
 
 /** @type {import('./tcp/server.js').TCPServer|null} */
 let tcpServer = null;
@@ -38,6 +39,9 @@ let statusManager = null;
 
 /** @type {Object|null} */
 let httpServer = null;
+
+/** @type {import('./mqtt/bridge.js').MQTTBridge|null} */
+let mqttBridge = null;
 
 /**
  * Application startup
@@ -138,11 +142,37 @@ const main = async () => {
       });
     }
 
+    // Start MQTT Bridge to external broker if configured
+    if (config.mqtt.brokerUrl && config.mqtt.brokerUrl !== 'mqtt://localhost:1883') {
+      try {
+        mqttBridge = createMQTTBridge({
+          brokerUrl: config.mqtt.brokerUrl,
+          username: config.mqtt.username,
+          password: config.mqtt.password,
+          clientId: config.mqtt.clientId,
+          localBroker: mqttBroker,
+          remotePrefix: config.mqtt.topicPrefix || 'ivy/v1',
+        });
+        await mqttBridge.start();
+        logger.info('MQTT Bridge started', {
+          remoteUrl: config.mqtt.brokerUrl,
+        });
+      } catch (error) {
+        // Bridge failure should not prevent gateway from running
+        logger.warn('MQTT Bridge failed to start (non-critical)', {
+          error: error.message,
+          brokerUrl: config.mqtt.brokerUrl,
+        });
+        mqttBridge = null;
+      }
+    }
+
     logger.info('IVY 4G Gateway started successfully', {
       tcpPort: config.tcp.port,
       mqttPort: config.mqtt.port,
       mqttWsPort: config.mqtt.wsPort,
       httpPort: config.http?.enabled !== false ? config.http.port : 'disabled',
+      bridgeUrl: mqttBridge ? config.mqtt.brokerUrl : 'disabled',
     });
 
     // Setup shutdown handlers
@@ -315,6 +345,11 @@ const shutdown = async () => {
   logger.info('Shutting down...');
 
   try {
+    if (mqttBridge) {
+      await mqttBridge.stop();
+      logger.info('MQTT Bridge stopped');
+    }
+
     if (httpServer) {
       await httpServer.stop();
       logger.info('HTTP server stopped');
@@ -361,6 +396,19 @@ const shutdown = async () => {
     process.exit(1);
   }
 };
+
+// Global exception handlers to prevent silent crashes
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception', { error: error.message, stack: error.stack });
+  // Give logger time to flush, then exit
+  setTimeout(() => process.exit(1), 1000);
+});
+
+process.on('unhandledRejection', (reason) => {
+  const message = reason instanceof Error ? reason.message : String(reason);
+  const stack = reason instanceof Error ? reason.stack : undefined;
+  logger.error('Unhandled promise rejection', { error: message, stack });
+});
 
 // Start application
 main();

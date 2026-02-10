@@ -14,6 +14,7 @@ import {
   createConnectionManager,
   CONNECTION_EVENTS,
 } from './connection-manager.js';
+import { createRateLimiter } from './rate-limiter.js';
 import {
   parseFrame,
   parseReadResponse,
@@ -68,6 +69,17 @@ export class TCPServer extends EventEmitter {
 
     /** @type {ConnectionManager} */
     this.connectionManager = createConnectionManager(this.options.connectionManagerOptions);
+
+    /** @type {import('./rate-limiter.js').RateLimiter|null} */
+    this.rateLimiter = null;
+    if (config.security?.rateLimiting?.enabled !== false) {
+      this.rateLimiter = createRateLimiter({
+        maxConnectionsPerIP: config.security?.rateLimiting?.maxConnectionsPerIP,
+        maxConnectionAttempts: config.security?.rateLimiting?.maxConnectionAttempts,
+        windowMs: config.security?.rateLimiting?.windowMs,
+        blockDuration: config.security?.rateLimiting?.blockDuration,
+      });
+    }
 
     /** @type {boolean} */
     this.isRunning = false;
@@ -170,6 +182,11 @@ export class TCPServer extends EventEmitter {
 
     logger.info('Stopping TCP Server...');
 
+    // Stop rate limiter
+    if (this.rateLimiter) {
+      this.rateLimiter.stop();
+    }
+
     // Stop connection manager first (closes all connections)
     await this.connectionManager.stop();
 
@@ -194,8 +211,29 @@ export class TCPServer extends EventEmitter {
    * @param {net.Socket} socket - New socket
    */
   handleConnection(socket) {
+    const remoteAddress = socket.remoteAddress || 'unknown';
+
+    // Rate limiting check
+    if (this.rateLimiter) {
+      const check = this.rateLimiter.checkConnection(remoteAddress);
+      if (!check.allowed) {
+        logger.warn('Connection rejected by rate limiter', {
+          remoteAddress,
+          reason: check.reason,
+        });
+        socket.destroy();
+        return;
+      }
+      this.rateLimiter.onConnect(remoteAddress);
+      socket.on('close', () => this.rateLimiter.onDisconnect(remoteAddress));
+    }
+
+    // Set socket options for production reliability
+    socket.setKeepAlive(true, 30000);
+    socket.setNoDelay(true);
+
     logger.debug('New connection', {
-      remoteAddress: socket.remoteAddress,
+      remoteAddress,
       remotePort: socket.remotePort,
     });
 
@@ -465,6 +503,12 @@ export class TCPServer extends EventEmitter {
     const connection = this.connectionManager.getConnectionByMeter(meterId);
     if (!connection) {
       throw new Error(`Meter not connected: ${meterId}`);
+    }
+
+    // Guard against unbounded pending command accumulation
+    const maxPending = this.connectionManager.options.maxPendingCommands || 50;
+    if (connection.pendingCommands.size >= maxPending) {
+      throw new Error(`Too many pending commands for meter ${meterId} (${connection.pendingCommands.size}/${maxPending})`);
     }
 
     const commandId = `cmd_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;

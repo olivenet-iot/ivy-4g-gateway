@@ -153,6 +153,9 @@ export class StatusManager extends EventEmitter {
       version: '0.1.0',
     };
 
+    /** @type {Function[]} Bound event listener references for cleanup */
+    this._boundListeners = [];
+
     /** @type {Object} Statistics */
     this.stats = {
       totalEvents: 0,
@@ -206,6 +209,9 @@ export class StatusManager extends EventEmitter {
     this.isRunning = false;
     this.gatewayStatus.status = 'stopped';
 
+    // Remove TCP server event listeners to prevent leaks
+    this.removeTcpEventListeners();
+
     this.stopStatusPublishing();
 
     // Create gateway stopped event
@@ -225,23 +231,17 @@ export class StatusManager extends EventEmitter {
       return;
     }
 
-    // Meter connected
-    this.tcpServer.on(SERVER_EVENTS.METER_CONNECTED, ({ meterId, remoteAddress }) => {
+    // Store bound references for cleanup
+    const onConnected = ({ meterId, remoteAddress }) => {
       this.handleMeterConnected(meterId, remoteAddress);
-    });
-
-    // Meter disconnected
-    this.tcpServer.on(SERVER_EVENTS.METER_DISCONNECTED, ({ meterId }) => {
+    };
+    const onDisconnected = ({ meterId }) => {
       this.handleMeterDisconnected(meterId);
-    });
-
-    // Telemetry received (DLT645)
-    this.tcpServer.on(SERVER_EVENTS.TELEMETRY_RECEIVED, (data) => {
+    };
+    const onTelemetry = (data) => {
       this.handleTelemetryReceived(data);
-    });
-
-    // DLMS telemetry received (IVY/DLMS meters)
-    this.tcpServer.on(SERVER_EVENTS.DLMS_TELEMETRY_RECEIVED, (data) => {
+    };
+    const onDlmsTelemetry = (data) => {
       if (data.telemetry?.readings) {
         for (const [key, reading] of Object.entries(data.telemetry.readings)) {
           this.handleTelemetryReceived({
@@ -253,7 +253,34 @@ export class StatusManager extends EventEmitter {
           });
         }
       }
-    });
+    };
+
+    this.tcpServer.on(SERVER_EVENTS.METER_CONNECTED, onConnected);
+    this.tcpServer.on(SERVER_EVENTS.METER_DISCONNECTED, onDisconnected);
+    this.tcpServer.on(SERVER_EVENTS.TELEMETRY_RECEIVED, onTelemetry);
+    this.tcpServer.on(SERVER_EVENTS.DLMS_TELEMETRY_RECEIVED, onDlmsTelemetry);
+
+    this._boundListeners = [
+      { event: SERVER_EVENTS.METER_CONNECTED, fn: onConnected },
+      { event: SERVER_EVENTS.METER_DISCONNECTED, fn: onDisconnected },
+      { event: SERVER_EVENTS.TELEMETRY_RECEIVED, fn: onTelemetry },
+      { event: SERVER_EVENTS.DLMS_TELEMETRY_RECEIVED, fn: onDlmsTelemetry },
+    ];
+  }
+
+  /**
+   * Remove TCP server event listeners
+   * @private
+   */
+  removeTcpEventListeners() {
+    if (!this.tcpServer) {
+      return;
+    }
+
+    for (const { event, fn } of this._boundListeners) {
+      this.tcpServer.removeListener(event, fn);
+    }
+    this._boundListeners = [];
   }
 
   /**

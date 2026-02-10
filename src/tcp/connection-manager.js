@@ -85,6 +85,7 @@ export class ConnectionManager extends EventEmitter {
       heartbeatInterval: options.heartbeatInterval || config.tcp.heartbeatInterval || 30000,
       connectionTimeout: options.connectionTimeout || config.tcp.connectionTimeout || 120000,
       maxConnections: options.maxConnections || 1000,
+      maxPendingCommands: options.maxPendingCommands || 50,
     };
 
     /** @type {Map<string, Object>} Connection ID -> Connection object */
@@ -591,7 +592,7 @@ export class ConnectionManager extends EventEmitter {
     });
 
     return new Promise((resolve, reject) => {
-      connection.socket.write(data, (error) => {
+      const ok = connection.socket.write(data, (error) => {
         if (error) {
           logger.error('Send error', { connectionId, error: error.message });
           reject(error);
@@ -602,6 +603,14 @@ export class ConnectionManager extends EventEmitter {
           resolve(true);
         }
       });
+
+      // Handle backpressure: if write buffer is full, wait for drain
+      if (!ok) {
+        logger.debug('Socket backpressure, waiting for drain', { connectionId });
+        connection.socket.once('drain', () => {
+          logger.debug('Socket drained', { connectionId });
+        });
+      }
     });
   }
 
