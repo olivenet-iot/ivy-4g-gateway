@@ -878,8 +878,9 @@ Waiting for command...</div>
         client = mqtt.connect(url, {
           clientId: `dashboard_${Date.now()}`,
           username, password,
+          keepalive: 30,
           connectTimeout: 5000,
-          reconnectPeriod: 0,
+          reconnectPeriod: 5000,
         });
       } catch (err) {
         clearTimeout(connectTimeout);
@@ -917,10 +918,15 @@ Waiting for command...</div>
 
       client.on('close', () => {
         clearTimeout(connectTimeout);
+        if (isConnected) {
+          addLog('system', 'Connection lost, reconnecting...');
+        }
         isConnected = false;
-        el.connectBtn.disabled = false;
         updateConnectionUI(false);
-        addLog('system', 'Disconnected from MQTT');
+      });
+
+      client.on('reconnect', () => {
+        addLog('system', 'Reconnecting to MQTT...');
       });
 
       client.on('message', handleMessage);
@@ -933,6 +939,7 @@ Waiting for command...</div>
       }
       isConnected = false;
       updateConnectionUI(false);
+      addLog('system', 'Disconnected from MQTT');
     }
 
     function updateConnectionUI(connected) {
