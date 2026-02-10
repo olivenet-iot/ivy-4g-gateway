@@ -584,9 +584,12 @@ export class PollingManager extends EventEmitter {
     if (!info) return null;
 
     meterPending.delete(invokeId);
-    if (meterPending.size === 0) {
-      this.pendingDlmsRequests.delete(meterId);
-    }
+    // Note: Do NOT delete the meter entry from pendingDlmsRequests here even if
+    // meterPending is empty. pollDlmsMeter() holds a local reference to the inner
+    // Map and may still be adding invokeIds for subsequent GET.requests. Premature
+    // deletion causes a race condition where invokeIds 2-6 are stored in a detached
+    // Map that resolveDlmsInvokeId can no longer find. The 30s timeout in
+    // pollDlmsMeter() handles stale entry cleanup instead.
     return info;
   }
 
