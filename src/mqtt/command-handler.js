@@ -32,6 +32,7 @@ import {
 } from '../protocol/registers.js';
 import { PROTOCOL_TYPES } from '../protocol/protocol-router.js';
 import { buildAarq, buildActionRequest, buildGetRequest, buildReleaseRequest, prepareDlmsForSending } from '../protocol/dlms/client.js';
+import { OBIS_REGISTRY, lookupObis } from '../protocol/dlms/obis-registry.js';
 import { CONNECTION_EVENTS } from '../tcp/connection-manager.js';
 import config from '../config/index.js';
 
@@ -74,6 +75,24 @@ export const COMMAND_STATUS = {
  * Topic pattern for command requests
  */
 const COMMAND_TOPIC_PATTERN = /^ivy\/v1\/meters\/([^/]+)\/command\/request$/;
+
+/**
+ * Mapping from DLT645 register names to DLMS OBIS codes.
+ * Used when a DLMS meter receives a read_register command with a DLT645 register name.
+ */
+const DLT645_TO_DLMS_MAP = {
+  TOTAL_ACTIVE_POSITIVE: { obisCode: '1-0:15.8.0.255', classId: 3 },
+  TOTAL_ACTIVE_IMPORT: { obisCode: '1-0:1.8.0.255', classId: 3 },
+  TARIFF_1_ACTIVE: { obisCode: '1-0:1.8.1.255', classId: 3 },
+  TARIFF_2_ACTIVE: { obisCode: '1-0:1.8.2.255', classId: 3 },
+  VOLTAGE_A: { obisCode: '1-0:12.7.0.255', classId: 3 },
+  CURRENT_A: { obisCode: '1-0:11.7.0.255', classId: 3 },
+  ACTIVE_POWER_TOTAL: { obisCode: '1-0:1.7.0.255', classId: 3 },
+  REACTIVE_POWER_TOTAL: { obisCode: '1-0:3.7.0.255', classId: 3 },
+  APPARENT_POWER_TOTAL: { obisCode: '1-0:9.7.0.255', classId: 3 },
+  POWER_FACTOR_TOTAL: { obisCode: '1-0:13.7.0.255', classId: 3 },
+  FREQUENCY: { obisCode: '1-0:14.7.0.255', classId: 3 },
+};
 
 /**
  * Command Handler class
@@ -378,7 +397,13 @@ export class CommandHandler extends EventEmitter {
    * @returns {Promise<Object>} Read result
    */
   async executeReadRegister(meterId, params) {
-    // Resolve register
+    // Check if this is a DLMS meter
+    const connection = this.tcpServer.connectionManager?.getConnectionByMeter(meterId);
+    if (connection?.protocolType === PROTOCOL_TYPES.IVY_DLMS) {
+      return this.executeDlmsReadRegister(meterId, params);
+    }
+
+    // DLT645 path
     let register;
     let dataId;
 
@@ -409,6 +434,70 @@ export class CommandHandler extends EventEmitter {
       unit: response.unit || register?.unit || '',
       timestamp: Date.now(),
     };
+  }
+
+  /**
+   * Execute read_register for a DLMS meter via AARQ → GET.request → RLRQ
+   * @private
+   * @param {string} meterId - Meter address
+   * @param {Object} params - Command parameters
+   * @returns {Promise<Object>} Read result
+   */
+  async executeDlmsReadRegister(meterId, params) {
+    const dlmsInfo = this.resolveDlmsRegister(params.register || params.dataId);
+    if (!dlmsInfo) {
+      throw new Error(`No DLMS mapping for register: ${params.register || params.dataId}`);
+    }
+
+    const wrapWithIvy = config.dlms?.wrapOutgoing !== false;
+    let release = null;
+    try {
+      if (this.pollingManager) {
+        release = await this.pollingManager.acquireDlmsLock(meterId, 15000);
+      }
+
+      const preparePacket = (apdu) => prepareDlmsForSending(apdu, { wrapWithIvy });
+
+      // 1. AARQ → AARE
+      const aarq = preparePacket(buildAarq());
+      await this.tcpServer.sendCommandNoWait(meterId, aarq);
+
+      const aare = await this.waitForDlmsResponse(meterId, 'aare', 5000);
+      if (!aare || !aare.accepted) {
+        throw new Error('DLMS association failed: ' + (aare ? 'rejected' : 'timeout'));
+      }
+
+      // 2. GET.request → GET.response
+      const getReq = preparePacket(buildGetRequest(dlmsInfo.classId, dlmsInfo.obisCode, 2, 1));
+      await this.tcpServer.sendCommandNoWait(meterId, getReq);
+
+      const getResp = await this.waitForDlmsResponse(meterId, 'get-response', 5000);
+      if (!getResp || getResp.accessResult !== 'success') {
+        const errorDetail = getResp?.data?.errorName || getResp?.accessResult || 'timeout';
+        throw new Error(`DLMS GET failed: ${errorDetail}`);
+      }
+
+      // 3. RLRQ (fire and forget)
+      const rlrq = preparePacket(buildReleaseRequest());
+      await this.tcpServer.sendCommandNoWait(meterId, rlrq);
+
+      // Extract and scale value
+      let value = getResp.data?.value !== undefined ? getResp.data.value : getResp.data;
+      if (dlmsInfo.obisInfo?.scaler && typeof value === 'number') {
+        value = Math.round(value * dlmsInfo.obisInfo.scaler * 1000) / 1000;
+      }
+
+      return {
+        register: dlmsInfo.obisInfo?.key || params.register,
+        obisCode: dlmsInfo.obisCode,
+        value,
+        unit: dlmsInfo.obisInfo?.unit || '',
+        protocol: 'dlms',
+        timestamp: Date.now(),
+      };
+    } finally {
+      if (release) release();
+    }
   }
 
   /**
@@ -646,9 +735,16 @@ export class CommandHandler extends EventEmitter {
    * @returns {Promise<Object>} Read results
    */
   async executeReadAll(meterId, params = {}) {
-    const results = {};
     const registers = params?.registers || ['TOTAL_ACTIVE_POSITIVE', 'VOLTAGE_A', 'CURRENT_A'];
 
+    // Check if this is a DLMS meter - use batched reads for efficiency
+    const connection = this.tcpServer.connectionManager?.getConnectionByMeter(meterId);
+    if (connection?.protocolType === PROTOCOL_TYPES.IVY_DLMS) {
+      return this.executeDlmsReadAll(meterId, registers);
+    }
+
+    // DLT645 path
+    const results = {};
     for (const regName of registers) {
       try {
         const result = await this.executeReadRegister(meterId, { register: regName });
@@ -667,6 +763,117 @@ export class CommandHandler extends EventEmitter {
       readings: results,
       timestamp: Date.now(),
     };
+  }
+
+  /**
+   * Execute read_all for DLMS meter using a single association with multiple GET.requests
+   * @private
+   * @param {string} meterId - Meter address
+   * @param {string[]} registerNames - Register names to read
+   * @returns {Promise<Object>} Read results
+   */
+  async executeDlmsReadAll(meterId, registerNames) {
+    const wrapWithIvy = config.dlms?.wrapOutgoing !== false;
+    let release = null;
+    try {
+      if (this.pollingManager) {
+        release = await this.pollingManager.acquireDlmsLock(meterId, 15000);
+      }
+
+      const preparePacket = (apdu) => prepareDlmsForSending(apdu, { wrapWithIvy });
+
+      // 1. AARQ → AARE
+      const aarq = preparePacket(buildAarq());
+      await this.tcpServer.sendCommandNoWait(meterId, aarq);
+
+      const aare = await this.waitForDlmsResponse(meterId, 'aare', 5000);
+      if (!aare || !aare.accepted) {
+        throw new Error('DLMS association failed: ' + (aare ? 'rejected' : 'timeout'));
+      }
+
+      // 2. GET each register
+      const results = {};
+      for (let i = 0; i < registerNames.length; i++) {
+        const regName = registerNames[i];
+        const dlmsInfo = this.resolveDlmsRegister(regName);
+        if (!dlmsInfo) {
+          results[regName] = { error: `No DLMS mapping for ${regName}` };
+          continue;
+        }
+
+        const invokeId = (i + 1) & 0xFF;
+        const getReq = preparePacket(buildGetRequest(dlmsInfo.classId, dlmsInfo.obisCode, 2, invokeId));
+        await this.tcpServer.sendCommandNoWait(meterId, getReq);
+
+        const getResp = await this.waitForDlmsResponse(meterId, 'get-response', 5000);
+        if (getResp?.accessResult === 'success' && getResp.data) {
+          let value = getResp.data.value !== undefined ? getResp.data.value : getResp.data;
+          if (dlmsInfo.obisInfo?.scaler && typeof value === 'number') {
+            value = Math.round(value * dlmsInfo.obisInfo.scaler * 1000) / 1000;
+          }
+          results[regName] = {
+            value,
+            unit: dlmsInfo.obisInfo?.unit || '',
+          };
+        } else {
+          results[regName] = {
+            error: getResp?.data?.errorName || 'Read failed',
+          };
+        }
+      }
+
+      // 3. RLRQ (fire and forget)
+      const rlrq = preparePacket(buildReleaseRequest());
+      await this.tcpServer.sendCommandNoWait(meterId, rlrq);
+
+      return {
+        readings: results,
+        protocol: 'dlms',
+        timestamp: Date.now(),
+      };
+    } finally {
+      if (release) release();
+    }
+  }
+
+  /**
+   * Resolve a register name or OBIS code to DLMS info
+   * @private
+   * @param {string} nameOrObis - DLT645 register name or OBIS code
+   * @returns {Object|null} { obisCode, classId, obisInfo } or null
+   */
+  resolveDlmsRegister(nameOrObis) {
+    if (!nameOrObis) return null;
+
+    // Check if it's an OBIS code directly (e.g., "1-0:12.7.0.255")
+    if (nameOrObis.includes(':') && nameOrObis.includes('.')) {
+      const obisInfo = lookupObis(nameOrObis);
+      return {
+        obisCode: nameOrObis,
+        classId: obisInfo?.classId || 3,
+        obisInfo,
+      };
+    }
+
+    // Check DLT645 → DLMS mapping
+    const mapping = DLT645_TO_DLMS_MAP[nameOrObis.toUpperCase()];
+    if (mapping) {
+      const obisInfo = lookupObis(mapping.obisCode);
+      return { ...mapping, obisInfo };
+    }
+
+    // Check OBIS registry by key
+    for (const [obis, info] of Object.entries(OBIS_REGISTRY)) {
+      if (info.key === nameOrObis.toUpperCase()) {
+        return {
+          obisCode: obis,
+          classId: info.classId || 3,
+          obisInfo: info,
+        };
+      }
+    }
+
+    return null;
   }
 
   /**
