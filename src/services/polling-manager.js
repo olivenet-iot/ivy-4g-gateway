@@ -505,7 +505,11 @@ export class PollingManager extends EventEmitter {
 
     const preparePacket = (apdu) => prepareDlmsForSending(apdu, { wrapWithIvy });
 
+    // Acquire DLMS association lock to prevent collision with commands
+    let release = null;
     try {
+      release = await this.acquireDlmsLock(meterId, 30000);
+
       // 1. Send AARQ (Association Request)
       const aarq = preparePacket(buildAarq());
       logger.debug('Sending AARQ', { meterId, hex: aarq.subarray(0, Math.min(32, aarq.length)).toString('hex') });
@@ -574,6 +578,8 @@ export class PollingManager extends EventEmitter {
     } catch (error) {
       logger.warn('DLMS active poll failed', { meterId, error: error.message });
       return { meterId, success: false, readings: [], errors: [error.message] };
+    } finally {
+      if (release) release();
     }
   }
 

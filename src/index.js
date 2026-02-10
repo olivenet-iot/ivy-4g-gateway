@@ -224,6 +224,20 @@ const setupEventHandlers = () => {
       }
     }
 
+    // Apply OBIS scalers to all readings in-place (synchronously).
+    // This must run before any await so that other event listeners
+    // (e.g. StatusManager) see correctly scaled values.
+    if (data.telemetry?.readings) {
+      for (const reading of Object.values(data.telemetry.readings)) {
+        if (reading.obis && typeof reading.value === 'number') {
+          const obisInfo = lookupObis(reading.obis);
+          if (obisInfo?.scaler) {
+            reading.value = Math.round(reading.value * obisInfo.scaler * 1000) / 1000;
+          }
+        }
+      }
+    }
+
     logger.debug('DLMS telemetry received', {
       meterId: data.meterId,
       apduType: data.apduType,
@@ -231,22 +245,14 @@ const setupEventHandlers = () => {
       readings: data.telemetry?.readings ? Object.keys(data.telemetry.readings) : [],
     });
 
-    // Publish each reading to MQTT
+    // Publish each reading to MQTT (values already scaled above)
     if (telemetryPublisher && data.telemetry?.readings) {
       for (const [key, reading] of Object.entries(data.telemetry.readings)) {
-        let value = reading.value;
-        // Apply scaler from OBIS registry
-        if (reading.obis) {
-          const obisInfo = lookupObis(reading.obis);
-          if (obisInfo?.scaler && typeof value === 'number') {
-            value = Math.round(value * obisInfo.scaler * 1000) / 1000;
-          }
-        }
         await telemetryPublisher.publishTelemetry(data.meterId, {
           source: 'dlms',
           register: { key, name: key },
           dataIdFormatted: reading.obis || key,
-          value,
+          value: reading.value,
           unit: reading.unit || '',
           timestamp: data.timestamp,
         });
