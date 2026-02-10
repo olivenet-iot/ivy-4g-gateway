@@ -520,7 +520,7 @@
     <div class="form-row">
       <div class="form-group">
         <label>MQTT Host</label>
-        <input type="text" id="mqttHost" class="form-input" value="localhost">
+        <input type="text" id="mqttHost" class="form-input">
       </div>
       <div class="form-group" style="max-width:120px">
         <label>WS Port</label>
@@ -847,13 +847,32 @@ Waiting for command...</div>
 
     // ===== MQTT Connection =====
     function connect() {
-      const host = el.mqttHost.value;
-      const port = el.mqttPort.value;
+      // Check if MQTT library is loaded
+      if (typeof mqtt === 'undefined') {
+        addLog('error', 'MQTT library not loaded! Check internet connectivity or host mqtt.min.js locally.');
+        el.connectBtn.textContent = 'Connect';
+        return;
+      }
+
+      const host = el.mqttHost.value || window.location.hostname;
+      const port = el.mqttPort.value || '9001';
       const username = el.mqttUsername.value;
       const password = el.mqttPassword.value;
       const url = `ws://${host}:${port}`;
 
       addLog('system', `Connecting to ${url}...`);
+      el.connectBtn.textContent = 'Connecting...';
+      el.connectBtn.disabled = true;
+
+      // Timeout fallback - if no event fires in 8 seconds, show error
+      const connectTimeout = setTimeout(() => {
+        if (!isConnected) {
+          addLog('error', `Connection timeout. Cannot reach ${url}. Check host/port and firewall.`);
+          disconnect();
+          el.connectBtn.textContent = 'Connect';
+          el.connectBtn.disabled = false;
+        }
+      }, 8000);
 
       try {
         client = mqtt.connect(url, {
@@ -863,14 +882,18 @@ Waiting for command...</div>
           reconnectPeriod: 0,
         });
       } catch (err) {
+        clearTimeout(connectTimeout);
         addLog('error', `Connection failed: ${err.message}`);
+        el.connectBtn.textContent = 'Connect';
+        el.connectBtn.disabled = false;
         return;
       }
 
       client.on('connect', () => {
+        clearTimeout(connectTimeout);
         isConnected = true;
         updateConnectionUI(true);
-        addLog('system', 'Connected to MQTT broker');
+        addLog('system', `Connected to MQTT broker at ${host}:${port}`);
 
         client.subscribe([
           'ivy/v1/meters/+/telemetry',
@@ -886,12 +909,16 @@ Waiting for command...</div>
       });
 
       client.on('error', (err) => {
+        clearTimeout(connectTimeout);
         addLog('error', `MQTT error: ${err.message}`);
+        el.connectBtn.disabled = false;
         updateConnectionUI(false);
       });
 
       client.on('close', () => {
+        clearTimeout(connectTimeout);
         isConnected = false;
+        el.connectBtn.disabled = false;
         updateConnectionUI(false);
         addLog('system', 'Disconnected from MQTT');
       });
@@ -1372,14 +1399,16 @@ Waiting for command...</div>
       if (selectedMeterId) updateDetailPanel();
     });
 
-    // Load saved settings
+    // Load saved settings, with smart defaults
     try {
       const saved = JSON.parse(localStorage.getItem('ivy_mqtt_settings') || '{}');
-      if (saved.host) el.mqttHost.value = saved.host;
+      el.mqttHost.value = saved.host || window.location.hostname || 'localhost';
       if (saved.port) el.mqttPort.value = saved.port;
       if (saved.username) el.mqttUsername.value = saved.username;
       if (saved.autoConnect) el.autoConnect.checked = true;
-    } catch {}
+    } catch {
+      el.mqttHost.value = window.location.hostname || 'localhost';
+    }
 
     // Periodic updates
     setInterval(updateMeterTable, 5000);
