@@ -1294,9 +1294,10 @@ Waiting for command...</div>
 
     function addMessageLog(topic, parts, data) {
       const type = topic.includes('/telemetry') ? 'telemetry' :
-                   topic.includes('/status') ? 'status' :
+                   (topic.includes('/status') && parts[2] === 'meters') ? 'status' :
                    topic.includes('/events') ? 'event' :
-                   topic.includes('/command') ? 'command' : 'system';
+                   topic.includes('/command') ? 'command' :
+                   topic === 'ivy/v1/gateway/status' ? 'gateway' : 'system';
       const meterId = parts.length > 3 ? parts[3] : '';
 
       let body = '';
@@ -1314,6 +1315,8 @@ Waiting for command...</div>
       } else if (type === 'status') {
         body = `<span class="hl-meter">${meterId}</span> ${data.online ? '<span class="hl-value">online</span>' : '<span style="color:var(--accent-red)">offline</span>'}`;
         if (data.ip) body += ` (${data.ip})`;
+      } else if (type === 'gateway') {
+        body = `Gateway ${data.status === 'online' ? '<span class="hl-value">online</span>' : '<span style="color:var(--accent-red)">' + data.status + '</span>'}`;
       } else if (type === 'event') {
         body = `<span class="hl-meter">${meterId}</span> ${data.event || data.type || 'event'}`;
       } else if (type === 'command') {
